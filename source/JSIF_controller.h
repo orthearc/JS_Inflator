@@ -418,6 +418,8 @@ private:
     Steinberg::Vst::ParamValue stateCurve  = 0.0;
     Steinberg::Vst::ParamValue stateOutput = 0.0;
     Steinberg::Vst::ParamValue stateOS     = 0.0;
+    Steinberg::Vst::ParamValue stateOSOffline = static_cast<Steinberg::Vst::ParamValue>(init_OSOffline) /
+                                                static_cast<Steinberg::Vst::ParamValue>(overSample_num);
     Steinberg::int32           stateClip   = 0;
     Steinberg::int32           stateIn     = 0;
     Steinberg::int32           stateSplit  = 0;

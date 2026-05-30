@@ -455,6 +455,10 @@ tresult PLUGIN_API JSIF_Controller::setComponentState(IBStream* state)
 	if (streamer.readDouble(savedPhase)  == false) return kResultFalse;
 	if (streamer.readInt32 (savedBypass) == false) return kResultFalse;
 
+	Vst::ParamValue savedOSOff = static_cast<Vst::ParamValue>(init_OSOffline) /
+	                             static_cast<Vst::ParamValue>(overSample_num);
+	streamer.readDouble(savedOSOff);   // tolerant: old states lack this field; keep default on short read
+
 	setParamNormalized(kParamInput,  savedInput);
 	setParamNormalized(kParamEffect, savedEffect);
 	setParamNormalized(kParamCurve,  savedCurve);
@@ -466,6 +470,7 @@ tresult PLUGIN_API JSIF_Controller::setComponentState(IBStream* state)
 	setParamNormalized(kParamZoom,   savedZoom);
 	setParamNormalized(kParamPhase,  savedPhase);
 	setParamNormalized(kParamBypass, savedBypass ? 1 : 0);
+	setParamNormalized(kParamOSOffline, savedOSOff);
 
     stateInput  = savedInput;
     stateEffect = savedEffect;
@@ -508,8 +513,10 @@ tresult PLUGIN_API JSIF_Controller::setState(IBStream* state)
     Vst::ParamValue savedZoom   = 0.0;
     Vst::ParamValue savedPhase  = 0.0;
     Vst::ParamValue savedGUI    = 0.0;
+    Vst::ParamValue savedOSOffline = static_cast<Vst::ParamValue>(init_OSOffline) /
+                                     static_cast<Vst::ParamValue>(overSample_num);
     //int32           savedBypass = 0;
-    
+
     if (streamer.readDouble(savedInput)  == false) savedInput  = 0.5;
     if (streamer.readDouble(savedEffect) == false) savedEffect = 0.0;
     if (streamer.readDouble(savedCurve)  == false) savedCurve  = 0.5;
@@ -521,6 +528,8 @@ tresult PLUGIN_API JSIF_Controller::setState(IBStream* state)
     if (streamer.readDouble(savedZoom)   == false) savedZoom   = 0.0;
     if (streamer.readDouble(savedPhase)  == false) savedPhase  = 0.0;
     if (streamer.readDouble(savedGUI)    == false) savedGUI    = 1.0;
+    if (streamer.readDouble(savedOSOffline) == false) savedOSOffline = static_cast<Vst::ParamValue>(init_OSOffline) /
+                                                                       static_cast<Vst::ParamValue>(overSample_num);
     //if (streamer.readInt32 (savedBypass) == false) return kResultFalse;
 
     setParamNormalized(kParamInput,  savedInput);
@@ -534,6 +543,7 @@ tresult PLUGIN_API JSIF_Controller::setState(IBStream* state)
     setParamNormalized(kParamZoom,   savedZoom);
     setParamNormalized(kParamPhase,  savedPhase);
     setParamNormalized(kGuiSwitch,   savedGUI);
+    setParamNormalized(kParamOSOffline, savedOSOffline);
     //setParamNormalized(kParamBypass, savedBypass ? 1 : 0);
 
     stateInput  = savedInput;
@@ -547,6 +557,7 @@ tresult PLUGIN_API JSIF_Controller::setState(IBStream* state)
     stateZoom   = savedZoom;
     statePhase  = savedPhase;
     stateGUI    = savedGUI;
+    stateOSOffline = savedOSOffline;
     //stateBypass = savedBypass;
 
     return kResultTrue;
@@ -572,7 +583,8 @@ tresult PLUGIN_API JSIF_Controller::getState(IBStream* state)
     stateZoom   = getParamNormalized (kParamZoom);
     statePhase  = getParamNormalized (kParamPhase);
 	stateGUI    = getParamNormalized (kGuiSwitch);
-    
+    stateOSOffline = getParamNormalized (kParamOSOffline);
+
     streamer.writeDouble(stateInput);
     streamer.writeDouble(stateEffect);
     streamer.writeDouble(stateCurve);
@@ -584,6 +596,7 @@ tresult PLUGIN_API JSIF_Controller::getState(IBStream* state)
     streamer.writeDouble(stateZoom);
     streamer.writeDouble(statePhase);
     streamer.writeDouble(stateGUI);
+    streamer.writeDouble(stateOSOffline);
     //streamer.writeInt32(stateBypass ? 1 : 0);
 
 	return kResultTrue;

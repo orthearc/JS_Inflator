@@ -604,6 +604,9 @@ else if (filter[channel].TAP_CONDITION == 3) \
 		if (streamer.readDouble(savedLin)    == false) return kResultFalse;
 		if (streamer.readInt32(savedBypass)  == false) return kResultFalse;
 
+		Vst::ParamValue savedOSOff = Steinberg::ToNormalized<ParamValue>(static_cast<ParamValue>(init_OSOffline), overSample_num);
+		streamer.readDouble(savedOSOff);   // tolerant: old states lack this field; keep default on short read
+
 		fInput     = savedInput;
 		fEffect    = savedEffect;
 		fCurve     = savedCurve;
@@ -615,6 +618,7 @@ else if (filter[channel].TAP_CONDITION == 3) \
 		fParamZoom = savedZoom;
 		fParamPhase= savedLin;
 		bBypass    = savedBypass > 0;
+		fParamOSOffline = static_cast<overSample>(Steinberg::FromNormalized<ParamValue> (savedOSOff, overSample_num));
 
 		if (Vst::Helpers::isProjectState(state) == kResultTrue)
 		{
@@ -659,6 +663,7 @@ else if (filter[channel].TAP_CONDITION == 3) \
 		streamer.writeDouble(fParamZoom);
 		streamer.writeDouble(fParamPhase);
 		streamer.writeInt32(bBypass ? 1 : 0);
+		streamer.writeDouble(Steinberg::ToNormalized<ParamValue> (static_cast<ParamValue>(fParamOSOffline), overSample_num));
 
 		return kResultOk;
 	}
