@@ -6,11 +6,12 @@
 
 ## Goal
 
-Customize the JS_Inflator plugin with three user-requested features plus a Windows build:
+Ship **our own VST3, "Arc Inflator"** — a distinct, rebranded derivative of JS_Inflator (regenerated UIDs, installs alongside the original) with four work-areas plus a Windows build:
 
-1. **Skin** the *twarch* GUI variant to the *Arcorrect* visual look (recolor) and add an animated starfield background.
+1. **Skin** the *Twarch* GUI variant to the *Arcorrect* visual look (recolor) and add an animated starfield background; default the plugin to this GUI.
 2. **Extend oversampling** beyond x8 to add x16 / x32 / x64, with **independent online (real-time) and offline (render) factors**.
 3. **Output fader range** changed from −12..0 dB to **−12..+12 dB**, matching the input fader.
+4. **Identity** — rebrand name/vendor to "Arc Inflator" / "The Arc" and regenerate the plugin UIDs (Area E), retaining yg331's GPLv3 attribution.
 
 ## Non-Goals (out of scope)
 
@@ -19,6 +20,7 @@ Customize the JS_Inflator plugin with three user-requested features plus a Windo
 - No per-mode (online/offline) **phase** parameter — phase stays a single global toggle. (Offline + linear + x64 is achievable by manual selection.)
 - No audio-reactive starfield (constant gentle drift only).
 - No DSP redesign of the inflator curve, band-split, metering, or the Original GUI.
+- No removal of yg331's copyright headers or the `LICENSE` — GPLv3 requires retaining attribution; we add ours alongside.
 
 ## Context — codebase map
 
@@ -123,14 +125,37 @@ Per `How_to_build.md`: CMake configure (fetches VST3 SDK + VSTGUI), VS2022 gener
 
 ---
 
+## Area E — Identity: "Arc Inflator" as our own VST3
+
+A distinct plugin that installs alongside JS Inflator (regenerated UIDs), defaulting to the recolored Twarch GUI. **GPLv3 constraint:** retain yg331's `// Copyright(c) 2024 yg331.` source headers + the `LICENSE`; add our copyright and a modification notice — never replace theirs.
+
+**Name / vendor strings:**
+- `entry.cpp:12` — `stringPluginName "JS Inflator"` → `"Arc Inflator"`.
+- `entry.cpp:24` — factory vendor `"yg331"` → `"The Arc"`; update the contact URL/email (`:26`, currently `mailto:info@mycompanyname.com`).
+- `version.h` — `stringOriginalFilename "JS Inflator.vst3"` → `"Arc Inflator.vst3"`; `stringFileDescription` → `"Arc Inflator VST3 (64Bit)"`; `stringCompanyName "yg331\0"` → `"The Arc\0"`; `stringLegalCopyright` → keep the yg331 line + append `Modifications (c) 2026 The Arc.`
+- `CMakeLists.txt:115` — `COMPANY_NAME "yg331"` → `"The Arc"`; set the built bundle/output name to `Arc Inflator` (the internal CMake target id `JS_Inflator` may stay, to keep the diff surgical — the host shows the output/bundle name). Update any `BUNDLE_IDENTIFIER` to a `com.thearc.*` form.
+
+**Regenerate UIDs (separate plugin):**
+- `cids.h:12-13` — replace `kJSIF_ProcessorUID` and `kJSIF_ControllerUID` with two freshly-generated FUIDs → installs alongside JS Inflator, no host conflict; existing JS Inflator presets/sessions won't load (accepted — new plugin).
+- **Rename the snapshot resource** `resource/A6B5CA9F…_snapshot.png` and `…_snapshot_2.0x.png` to `<NEW_PROCESSOR_UID_HEX>_snapshot.png` / `…_2.0x.png` (the VST3 snapshot filename must equal the processor UID hex). Update the `smtg_target_add_plugin_snapshots` reference (CMakeLists:85) if it names the file.
+- AU target is mac-only — out of scope for the Windows build.
+
+**Default GUI = Twarch:**
+- `controller.cpp:392` — `GuiSwitch->toNormalized(0)` → `toNormalized(1)`; setState fallback `savedGUI = 0.0` (`:509`) → the Twarch-normalized value (`1.0` for the 2-entry list). Editor opens on the recolored Twarch; Original still selectable.
+
+**Verify:** host shows "Arc Inflator" by "The Arc"; installs without replacing/conflicting with an existing JS Inflator; opens on the recolored Twarch GUI; snapshot thumbnail displays; `LICENSE` + yg331 headers retained.
+
+---
+
 ## Sequencing & verification order
 
-1. **C (faders)** — smallest, isolated; build + check param range.
-2. **B (oversampling)** — DSP + params; build + aliasing/latency checks per mode.
-3. **A (skin)** — most iterative/visual; build + visual confirmation in real plugin.
-4. **D** — full build + validator at each stage and final.
+1. **E (identity)** — first, so every subsequent build produces "Arc Inflator" with fresh UIDs and confirms it installs alongside JS Inflator.
+2. **C (faders)** — smallest DSP/param change, isolated; build + check param range.
+3. **B (oversampling)** — DSP + params; build + aliasing/latency checks per mode.
+4. **A (skin)** — most iterative/visual; build + visual confirmation in real plugin.
+5. **D** — full build + validator at each stage and final.
 
-Each area is independently buildable/verifiable. Changes are surgical: every edit traces to one of the three requests. `version.h` bumped once at the end.
+Each area is independently buildable/verifiable. Changes are surgical: every edit traces to one of the four work-areas. `version.h` bumped once at the end.
 
 ## Risks
 
