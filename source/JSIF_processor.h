@@ -369,8 +369,15 @@ protected:
 	std::vector<Flt> dnStage[kMaxStages];
 	static SMTG_CONSTEXPR int32 upStageTap[kMaxStages] = { 87, 33, 21, 17, 15, 13 };
 	static SMTG_CONSTEXPR int32 dnStageTap[kMaxStages] = { 113, 33, 21, 17, 15, 13 };
-	// Min-phase FIR latencies for the new factors (MEASURED in Task 3.7).
-	int32 latency_Fir_x16 = 0, latency_Fir_x32 = 0, latency_Fir_x64 = 0;
+	// Min-phase FIR latencies for the new factors.
+	// Extrapolated from the analytic half-band cascade group delay (sum of per-stage
+	// (TAP-1)/2 referred to base rate over up+down chains), which reproduces the existing
+	// literals exactly at x8 (=60) and closely at x2/x4. Added high-rate stages contribute
+	// only fractional base-rate delay, so the sequence saturates near 61-62.
+	// TODO: verify via DAW null-test (Effect=0.5 dry/wet null depth per factor).
+	static SMTG_CONSTEXPR int32 latency_Fir_x16 = 61;
+	static SMTG_CONSTEXPR int32 latency_Fir_x32 = 61;
+	static SMTG_CONSTEXPR int32 latency_Fir_x64 = 62;
 	// Linear-phase (r8brain) resamplers for the new factors.
 	std::vector<r8b::CDSPResampler24*> upSample_16x_Lin, upSample_32x_Lin, upSample_64x_Lin;
 	std::vector<r8b::CDSPResampler24*> dnSample_16x_Lin, dnSample_32x_Lin, dnSample_64x_Lin;

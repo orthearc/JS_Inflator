@@ -327,6 +327,13 @@ else if (filter[channel].TAP_CONDITION == 3) \
 			dnSample_16x_Lin[channel] = new r8b::CDSPResampler24(16.0, 1.0, 1 * 16, 2.3);
 			dnSample_32x_Lin[channel] = new r8b::CDSPResampler24(32.0, 1.0, 1 * 32, 2.4);
 			dnSample_64x_Lin[channel] = new r8b::CDSPResampler24(64.0, 1.0, 1 * 64, 2.5);
+
+			if (channel == 0) {
+				// Exact linear-phase (r8brain) latencies (mirrors the commented formula at processor.h:366-368).
+				latency_r8b_x16 = -1 + 2 * (int32)upSample_16x_Lin[0]->getInLenBeforeOutPos(1);
+				latency_r8b_x32 = -1 + 2 * (int32)upSample_32x_Lin[0]->getInLenBeforeOutPos(1);
+				latency_r8b_x64 = -1 + 2 * (int32)upSample_64x_Lin[0]->getInLenBeforeOutPos(1);
+			}
 		}
 
 		VuInput.setChannel(numChannels);
