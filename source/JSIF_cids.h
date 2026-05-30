@@ -9,8 +9,8 @@
 
 namespace yg331 {
 //------------------------------------------------------------------------
-static const Steinberg::FUID kJSIF_ProcessorUID  (0xA6B5CA9F, 0x4C4F5B93, 0x88F83777, 0x4504BD37);
-static const Steinberg::FUID kJSIF_ControllerUID (0x8565C317, 0x780F5A1E, 0x8E35F396, 0xB6745FC7);
+static const Steinberg::FUID kJSIF_ProcessorUID  (0xC682CEDB, 0xB8614B93, 0xB4FEB3BE, 0x695156CB);
+static const Steinberg::FUID kJSIF_ControllerUID (0xAA25A6C1, 0x1E064F7B, 0xB7E2F0BF, 0x0F4CDD55);
 
 #define JSIF_VST3Category "Fx"
 enum {
