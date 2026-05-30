@@ -34,7 +34,8 @@ namespace yg331 {
 		curveB(init_curveB),
 		curveC(init_curveC),
 		curveD(init_curveD),
-		fParamOS(init_OS)
+		fParamOS(init_OS),
+		fParamOSOffline(init_OSOffline)
 	{
 		//--- set the wanted controller for our processor
 		setControllerClass(kJSIF_ControllerUID);
@@ -198,6 +199,8 @@ namespace yg331 {
 	//------------------------------------------------------------------------
 	tresult PLUGIN_API JSIF_Processor::setupProcessing(Vst::ProcessSetup& newSetup)
 	{
+		isOffline = (newSetup.processMode == Steinberg::Vst::kOffline);
+
 		Vst::SpeakerArrangement arr;
 		getBusArrangement(Vst::BusDirections::kInput, 0, arr);
         uint16_t numChannels = static_cast<uint16_t> (Vst::SpeakerArr::getChannelCount(arr));
@@ -364,22 +367,23 @@ else if (filter[channel].TAP_CONDITION == 3) \
 	uint32 PLUGIN_API JSIF_Processor::getLatencySamples()
 	{
         //FDebugPrint("[ FDebugPrint ] getLatencySamples\n");
+		overSample os = effectiveOS();
 		if (fParamPhase) {
-			if      (fParamOS == overSample_1x)  return 0;
-			else if (fParamOS == overSample_2x)  return latency_r8b_x2;
-			else if (fParamOS == overSample_4x)  return latency_r8b_x4;
-			else if (fParamOS == overSample_8x)  return latency_r8b_x8;
-			else if (fParamOS == overSample_16x) return latency_r8b_x16;
-			else if (fParamOS == overSample_32x) return latency_r8b_x32;
+			if      (os == overSample_1x)  return 0;
+			else if (os == overSample_2x)  return latency_r8b_x2;
+			else if (os == overSample_4x)  return latency_r8b_x4;
+			else if (os == overSample_8x)  return latency_r8b_x8;
+			else if (os == overSample_16x) return latency_r8b_x16;
+			else if (os == overSample_32x) return latency_r8b_x32;
 			else                                 return latency_r8b_x64;
 		}
 		else {
-			if      (fParamOS == overSample_1x)  return 0;
-			else if (fParamOS == overSample_2x)  return latency_Fir_x2;
-			else if (fParamOS == overSample_4x)  return latency_Fir_x4;
-			else if (fParamOS == overSample_8x)  return latency_Fir_x8;
-			else if (fParamOS == overSample_16x) return latency_Fir_x16;
-			else if (fParamOS == overSample_32x) return latency_Fir_x32;
+			if      (os == overSample_1x)  return 0;
+			else if (os == overSample_2x)  return latency_Fir_x2;
+			else if (os == overSample_4x)  return latency_Fir_x4;
+			else if (os == overSample_8x)  return latency_Fir_x8;
+			else if (os == overSample_16x) return latency_Fir_x16;
+			else if (os == overSample_32x) return latency_Fir_x32;
 			else                                 return latency_Fir_x64;
 		}
 	}
@@ -429,6 +433,9 @@ else if (filter[channel].TAP_CONDITION == 3) \
 						case kParamOS:
 						                   fParamOS    = static_cast<overSample>(Steinberg::FromNormalized<ParamValue> (value, overSample_num));
 						                   sendTextMessage("OS");
+						                   break;
+						case kParamOSOffline:
+						                   fParamOSOffline = static_cast<overSample>(Steinberg::FromNormalized<ParamValue> (value, overSample_num));
 						                   break;
 						}
 					}
@@ -738,22 +745,23 @@ else if (filter[channel].TAP_CONDITION == 3) \
 		int32 sampleFrames
 	)
 	{
+		overSample os = effectiveOS();
 		int32 latency = 0;
 		if (!fParamPhase) {
-			if      (fParamOS == overSample_2x)  latency = latency_Fir_x2;
-			else if (fParamOS == overSample_4x)  latency = latency_Fir_x4;
-			else if (fParamOS == overSample_8x)  latency = latency_Fir_x8;
-			else if (fParamOS == overSample_16x) latency = latency_Fir_x16;
-			else if (fParamOS == overSample_32x) latency = latency_Fir_x32;
-			else if (fParamOS == overSample_64x) latency = latency_Fir_x64;
+			if      (os == overSample_2x)  latency = latency_Fir_x2;
+			else if (os == overSample_4x)  latency = latency_Fir_x4;
+			else if (os == overSample_8x)  latency = latency_Fir_x8;
+			else if (os == overSample_16x) latency = latency_Fir_x16;
+			else if (os == overSample_32x) latency = latency_Fir_x32;
+			else if (os == overSample_64x) latency = latency_Fir_x64;
 		}
 		else {
-			if      (fParamOS == overSample_2x)  latency = latency_r8b_x2;
-			else if (fParamOS == overSample_4x)  latency = latency_r8b_x4;
-			else if (fParamOS == overSample_8x)  latency = latency_r8b_x8;
-			else if (fParamOS == overSample_16x) latency = latency_r8b_x16;
-			else if (fParamOS == overSample_32x) latency = latency_r8b_x32;
-			else if (fParamOS == overSample_64x) latency = latency_r8b_x64;
+			if      (os == overSample_2x)  latency = latency_r8b_x2;
+			else if (os == overSample_4x)  latency = latency_r8b_x4;
+			else if (os == overSample_8x)  latency = latency_r8b_x8;
+			else if (os == overSample_16x) latency = latency_r8b_x16;
+			else if (os == overSample_32x) latency = latency_r8b_x32;
+			else if (os == overSample_64x) latency = latency_r8b_x64;
 		}
 
 		for (int32 channel = 0; channel < numChannels; channel++)
@@ -761,8 +769,8 @@ else if (filter[channel].TAP_CONDITION == 3) \
 			SampleType* ptrIn  = (SampleType*) inputs[channel];
 			SampleType* ptrOut = (SampleType*)outputs[channel];
 			int32 samples = sampleFrames;
-			
-			if (fParamOS == overSample_1x) {
+
+			if (os == overSample_1x) {
 				memcpy(ptrOut, ptrIn, sizeof(SampleType) * sampleFrames);
 				continue;
 			}
@@ -817,31 +825,32 @@ else if (filter[channel].TAP_CONDITION == 3) \
 		curveC =   curvepct - 0.5; 
 		curveD = 0.0625 - curvepct * 0.25 + (curvepct * curvepct) * 0.25;	
 
+		overSample os = effectiveOS();
 		int32 latency = 0;
 		if (!fParamPhase) {
-			if      (fParamOS == overSample_2x)  latency = latency_Fir_x2;
-			else if (fParamOS == overSample_4x)  latency = latency_Fir_x4;
-			else if (fParamOS == overSample_8x)  latency = latency_Fir_x8;
-			else if (fParamOS == overSample_16x) latency = latency_Fir_x16;
-			else if (fParamOS == overSample_32x) latency = latency_Fir_x32;
-			else if (fParamOS == overSample_64x) latency = latency_Fir_x64;
+			if      (os == overSample_2x)  latency = latency_Fir_x2;
+			else if (os == overSample_4x)  latency = latency_Fir_x4;
+			else if (os == overSample_8x)  latency = latency_Fir_x8;
+			else if (os == overSample_16x) latency = latency_Fir_x16;
+			else if (os == overSample_32x) latency = latency_Fir_x32;
+			else if (os == overSample_64x) latency = latency_Fir_x64;
 		}
 		else {
-			if      (fParamOS == overSample_2x)  latency = latency_r8b_x2;
-			else if (fParamOS == overSample_4x)  latency = latency_r8b_x4;
-			else if (fParamOS == overSample_8x)  latency = latency_r8b_x8;
-			else if (fParamOS == overSample_16x) latency = latency_r8b_x16;
-			else if (fParamOS == overSample_32x) latency = latency_r8b_x32;
-			else if (fParamOS == overSample_64x) latency = latency_r8b_x64;
+			if      (os == overSample_2x)  latency = latency_r8b_x2;
+			else if (os == overSample_4x)  latency = latency_r8b_x4;
+			else if (os == overSample_8x)  latency = latency_r8b_x8;
+			else if (os == overSample_16x) latency = latency_r8b_x16;
+			else if (os == overSample_32x) latency = latency_r8b_x32;
+			else if (os == overSample_64x) latency = latency_r8b_x64;
 		}
 
 		int32 oversampling = 1;
-		if      (fParamOS == overSample_2x)  oversampling = 2;
-		else if (fParamOS == overSample_4x)  oversampling = 4;
-		else if (fParamOS == overSample_8x)  oversampling = 8;
-		else if (fParamOS == overSample_16x) oversampling = 16;
-		else if (fParamOS == overSample_32x) oversampling = 32;
-		else if (fParamOS == overSample_64x) oversampling = 64;
+		if      (os == overSample_2x)  oversampling = 2;
+		else if (os == overSample_4x)  oversampling = 4;
+		else if (os == overSample_8x)  oversampling = 8;
+		else if (os == overSample_16x) oversampling = 16;
+		else if (os == overSample_32x) oversampling = 32;
+		else if (os == overSample_64x) oversampling = 64;
 
 		Vst::SampleRate targetSampleRate = SampleRate * oversampling;
 		
@@ -890,23 +899,23 @@ else if (filter[channel].TAP_CONDITION == 3) \
 				Vst::Sample64 drySample = inputSample;
 
 				// Upsampling
-				if              (fParamOS == overSample_1x) up_x[0] = inputSample;
+				if              (os == overSample_1x) up_x[0] = inputSample;
 				else {
 					if (!fParamPhase) {
-						if      (fParamOS == overSample_2x)  Fir_x2_up(&inputSample, up_x, channel);
-						else if (fParamOS == overSample_4x)  Fir_x4_up(&inputSample, up_x, channel);
-						else if (fParamOS == overSample_8x)  Fir_x8_up(&inputSample, up_x, channel);
-						else if (fParamOS == overSample_16x) Fir_up_n(&inputSample, up_x, channel, 4);
-						else if (fParamOS == overSample_32x) Fir_up_n(&inputSample, up_x, channel, 5);
+						if      (os == overSample_2x)  Fir_x2_up(&inputSample, up_x, channel);
+						else if (os == overSample_4x)  Fir_x4_up(&inputSample, up_x, channel);
+						else if (os == overSample_8x)  Fir_x8_up(&inputSample, up_x, channel);
+						else if (os == overSample_16x) Fir_up_n(&inputSample, up_x, channel, 4);
+						else if (os == overSample_32x) Fir_up_n(&inputSample, up_x, channel, 5);
 						else                                 Fir_up_n(&inputSample, up_x, channel, 6);
 					}
 					else {
 						double* upSample_buff;
-						if      (fParamOS == overSample_2x)  upSample_2x_Lin[channel]->process(&inputSample, 1, upSample_buff);
-						else if (fParamOS == overSample_4x)  upSample_4x_Lin[channel]->process(&inputSample, 1, upSample_buff);
-						else if (fParamOS == overSample_8x)  upSample_8x_Lin[channel]->process(&inputSample, 1, upSample_buff);
-						else if (fParamOS == overSample_16x) upSample_16x_Lin[channel]->process(&inputSample, 1, upSample_buff);
-						else if (fParamOS == overSample_32x) upSample_32x_Lin[channel]->process(&inputSample, 1, upSample_buff);
+						if      (os == overSample_2x)  upSample_2x_Lin[channel]->process(&inputSample, 1, upSample_buff);
+						else if (os == overSample_4x)  upSample_4x_Lin[channel]->process(&inputSample, 1, upSample_buff);
+						else if (os == overSample_8x)  upSample_8x_Lin[channel]->process(&inputSample, 1, upSample_buff);
+						else if (os == overSample_16x) upSample_16x_Lin[channel]->process(&inputSample, 1, upSample_buff);
+						else if (os == overSample_32x) upSample_32x_Lin[channel]->process(&inputSample, 1, upSample_buff);
 						else                                 upSample_64x_Lin[channel]->process(&inputSample, 1, upSample_buff);
 						memcpy(up_x, upSample_buff, sizeof(Vst::Sample64) * oversampling);
 					}
@@ -943,23 +952,23 @@ else if (filter[channel].TAP_CONDITION == 3) \
 				}
 
 				// Downsampling
-				if              (fParamOS == overSample_1x) inputSample = up_y[0];
+				if              (os == overSample_1x) inputSample = up_y[0];
 				else {
 					if (!fParamPhase) {
-						if      (fParamOS == overSample_2x)  Fir_x2_dn(up_y, &inputSample, channel);
-						else if (fParamOS == overSample_4x)  Fir_x4_dn(up_y, &inputSample, channel);
-						else if (fParamOS == overSample_8x)  Fir_x8_dn(up_y, &inputSample, channel);
-						else if (fParamOS == overSample_16x) Fir_dn_n(up_y, &inputSample, channel, 4);
-						else if (fParamOS == overSample_32x) Fir_dn_n(up_y, &inputSample, channel, 5);
+						if      (os == overSample_2x)  Fir_x2_dn(up_y, &inputSample, channel);
+						else if (os == overSample_4x)  Fir_x4_dn(up_y, &inputSample, channel);
+						else if (os == overSample_8x)  Fir_x8_dn(up_y, &inputSample, channel);
+						else if (os == overSample_16x) Fir_dn_n(up_y, &inputSample, channel, 4);
+						else if (os == overSample_32x) Fir_dn_n(up_y, &inputSample, channel, 5);
 						else                                 Fir_dn_n(up_y, &inputSample, channel, 6);
 					}
 					else {
 						double* dnSample_buff;
-						if      (fParamOS == overSample_2x)  dnSample_2x_Lin[channel]->process(up_y, oversampling, dnSample_buff);
-						else if (fParamOS == overSample_4x)  dnSample_4x_Lin[channel]->process(up_y, oversampling, dnSample_buff);
-						else if (fParamOS == overSample_8x)  dnSample_8x_Lin[channel]->process(up_y, oversampling, dnSample_buff);
-						else if (fParamOS == overSample_16x) dnSample_16x_Lin[channel]->process(up_y, oversampling, dnSample_buff);
-						else if (fParamOS == overSample_32x) dnSample_32x_Lin[channel]->process(up_y, oversampling, dnSample_buff);
+						if      (os == overSample_2x)  dnSample_2x_Lin[channel]->process(up_y, oversampling, dnSample_buff);
+						else if (os == overSample_4x)  dnSample_4x_Lin[channel]->process(up_y, oversampling, dnSample_buff);
+						else if (os == overSample_8x)  dnSample_8x_Lin[channel]->process(up_y, oversampling, dnSample_buff);
+						else if (os == overSample_16x) dnSample_16x_Lin[channel]->process(up_y, oversampling, dnSample_buff);
+						else if (os == overSample_32x) dnSample_32x_Lin[channel]->process(up_y, oversampling, dnSample_buff);
 						else                                 dnSample_64x_Lin[channel]->process(up_y, oversampling, dnSample_buff);
 						inputSample = *dnSample_buff;
 					}

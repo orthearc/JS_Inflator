@@ -315,6 +315,9 @@ protected:
 	Sample64   curveD;
 	std::vector<Band_Split> Band_Split;
 	overSample fParamOS;
+	overSample fParamOSOffline;
+	bool isOffline = false;
+	inline overSample effectiveOS() const { return isOffline ? fParamOSOffline : fParamOS; }
 
 	// VU metering ----------------------------------------------------------------
 	LevelEnvelopeFollower VuInput, VuOutput;
