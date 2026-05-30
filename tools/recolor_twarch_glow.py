@@ -36,6 +36,8 @@ local = np.asarray(Image.fromarray(L.astype(np.uint8)).filter(
     ImageFilter.GaussianBlur(LOCAL_R))).astype(np.float32)
 
 ink  = np.where(local > 90, np.clip(local - L - EDGE, 0, None), 0)
+ink[163:697, 421:878] = 0   # no dark-on-bright glow inside the dark meter window
+                            # (kills spurious blobs in the gaps between bright labels, e.g. 'I' / 'N')
 # 'lite' (bright features on dark windows) only in the ERODED interior of dark regions,
 # so meter-panel frames / well rims / boundary bevels stop glowing — only interior text does.
 _darkin = np.asarray(Image.fromarray(((local < 95) * 255).astype(np.uint8))
