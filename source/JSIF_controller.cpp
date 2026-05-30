@@ -657,7 +657,7 @@ tresult JSIF_Controller::receiveText(const char* text)
 	if (text)
 	{	
 		// Latency report
-		if (strcmp("OS\n", text)) {
+		if (strcmp("OS\n", text) == 0) {
             getComponentHandler()->restartComponent(Vst::kLatencyChanged);
             //FDebugPrint("[ FDebugPrint ] restartComponent\n");
 		}

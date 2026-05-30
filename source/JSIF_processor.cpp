@@ -428,14 +428,15 @@ else if (filter[channel].TAP_CONDITION == 3) \
 						case kParamSplit:  bSplit      = (value > 0.5f); break;
 						case kParamPhase:
 						                   fParamPhase = (value > 0.5f);
-						                   sendTextMessage("OS");
+						                   sendTextMessage("OS\n");
 						                   break;
 						case kParamOS:
 						                   fParamOS    = static_cast<overSample>(Steinberg::FromNormalized<ParamValue> (value, overSample_num));
-						                   sendTextMessage("OS");
+						                   sendTextMessage("OS\n");
 						                   break;
 						case kParamOSOffline:
 						                   fParamOSOffline = static_cast<overSample>(Steinberg::FromNormalized<ParamValue> (value, overSample_num));
+						                   sendTextMessage("OS\n");
 						                   break;
 						}
 					}
