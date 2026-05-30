@@ -109,6 +109,13 @@ namespace yg331 {
 		clear_delete(dnSample_82);
 		clear_delete(dnSample_83);
 
+		for (auto& v : { &upSample_16x_Lin,&upSample_32x_Lin,&upSample_64x_Lin,
+		                 &dnSample_16x_Lin,&dnSample_32x_Lin,&dnSample_64x_Lin })
+			for (auto* p : *v) delete p;
+		clear_delete(upSample_16x_Lin); clear_delete(upSample_32x_Lin); clear_delete(upSample_64x_Lin);
+		clear_delete(dnSample_16x_Lin); clear_delete(dnSample_32x_Lin); clear_delete(dnSample_64x_Lin);
+		for (int s = 0; s < kMaxStages; s++) { clear_delete(upStage[s]); clear_delete(dnStage[s]); }
+
 		//---do not forget to call parent ------
 		return AudioEffect::terminate();
 	}
@@ -220,7 +227,13 @@ namespace yg331 {
 		dnSample_4x_Lin.resize(numChannels);
 		dnSample_8x_Lin.resize(numChannels);
 
-		for (int channel = 0; channel < numChannels; channel++) 
+		// ---- Generic min-phase cascade stages (x16/32/64) ----
+		for (int s = 0; s < kMaxStages; s++) { upStage[s].resize(numChannels); dnStage[s].resize(numChannels); }
+		// ---- Linear-phase r8brain for new factors ----
+		upSample_16x_Lin.resize(numChannels); upSample_32x_Lin.resize(numChannels); upSample_64x_Lin.resize(numChannels);
+		dnSample_16x_Lin.resize(numChannels); dnSample_32x_Lin.resize(numChannels); dnSample_64x_Lin.resize(numChannels);
+
+		for (int channel = 0; channel < numChannels; channel++)
 		{
 			memset(upSample_21[channel].coef, 0, sizeof(upSample_21[channel].coef));
 			memset(upSample_41[channel].coef, 0, sizeof(upSample_41[channel].coef));
@@ -295,6 +308,25 @@ else if (filter[channel].TAP_CONDITION == 3) \
 			dnSample_2x_Lin[channel] = new r8b::CDSPResampler24(2.0, 1.0, 1 * 2, 2.0);
 			dnSample_4x_Lin[channel] = new r8b::CDSPResampler24(4.0, 1.0, 1 * 4, 2.1);
 			dnSample_8x_Lin[channel] = new r8b::CDSPResampler24(8.0, 1.0, 1 * 8, 2.2);
+
+			for (int s = 0; s < kMaxStages; s++)
+			{
+				const double designFs = 96000.0 * (1 << s);      // 96k,192k,384k,768k,1.536M,3.072M
+				const double designFb = designFs * 0.25;          // half-band cutoff = Fs/4
+				memset(upStage[s][channel].coef, 0, sizeof(upStage[s][channel].coef));
+				memset(dnStage[s][channel].coef, 0, sizeof(dnStage[s][channel].coef));
+				Kaiser::calcFilter(designFs, 0.0, designFb, upStageTap[s], 100.0, upStage[s][channel].coef);
+				Kaiser::calcFilter(designFs, 0.0, designFb, dnStageTap[s], 100.0, dnStage[s][channel].coef);
+				for (int i = 0; i < upStageTap[s]; i++) upStage[s][channel].coef[i] *= 2.0;  // interpolation gain
+				FLT_SET(upStage[s], upStageTap[s]);
+				FLT_SET(dnStage[s], dnStageTap[s]);
+			}
+			upSample_16x_Lin[channel] = new r8b::CDSPResampler24(1.0, 16.0, 1 * 16, 2.3);
+			upSample_32x_Lin[channel] = new r8b::CDSPResampler24(1.0, 32.0, 1 * 32, 2.4);
+			upSample_64x_Lin[channel] = new r8b::CDSPResampler24(1.0, 64.0, 1 * 64, 2.5);
+			dnSample_16x_Lin[channel] = new r8b::CDSPResampler24(16.0, 1.0, 1 * 16, 2.3);
+			dnSample_32x_Lin[channel] = new r8b::CDSPResampler24(32.0, 1.0, 1 * 32, 2.4);
+			dnSample_64x_Lin[channel] = new r8b::CDSPResampler24(64.0, 1.0, 1 * 64, 2.5);
 		}
 
 		VuInput.setChannel(numChannels);
