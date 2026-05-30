@@ -65,69 +65,69 @@
 		},
 		"fonts": {
 			"Arial_18": {
-				"font-name": "Arial",
+				"font-name": "Segoe UI",
 				"size": "18"
 			},
 			"Arial_24": {
-				"font-name": "Arial",
+				"font-name": "Segoe UI",
 				"size": "24"
 			},
 			"Arial_26": {
-				"font-name": "Arial",
+				"font-name": "Segoe UI",
 				"size": "26"
 			},
 			"Arial_28": {
-				"font-name": "Arial",
+				"font-name": "Segoe UI",
 				"size": "28"
 			}
 		},
 		"colors": {
-			"New": "#b6b6b6ff",
-			"OS_back": "#c1c3c4ff",
-			"coverup": "#2f2d2dff",
-			"db_dark": "#404f59ff",
-			"mid_back": "#293237ff",
-			"mid_font_color": "#2d2d2dff",
-			"mid_gray": "#8b8b8bff"
+			"New": "#5090e0ff",
+			"OS_back": "#1e1e34ff",
+			"coverup": "#080810ff",
+			"db_dark": "#4070b8ff",
+			"mid_back": "#10101cff",
+			"mid_font_color": "#a0a8c0ff",
+			"mid_gray": "#2a2a50ff"
 		},
 		"gradients": {
 			"Blue": [
 				{
-					"rgba": "#4c55ffff",
+					"rgba": "#5090e0ff",
 					"start": "1"
 				},
 				{
-					"rgba": "#000000ff",
+					"rgba": "#080810ff",
 					"start": "1"
 				}
 			],
 			"Default TextButton Gradient": [
 				{
-					"rgba": "#dcdcdcff",
+					"rgba": "#1e1e34ff",
 					"start": "0"
 				},
 				{
-					"rgba": "#b4b4b4ff",
+					"rgba": "#10101cff",
 					"start": "1"
 				}
 			],
 			"Default TextButton Gradient Highlighted": [
 				{
-					"rgba": "#b4b4b4ff",
+					"rgba": "#1e1e34ff",
 					"start": "0"
 				},
 				{
-					"rgba": "#646464ff",
+					"rgba": "#10101cff",
 					"start": "1"
 				}
 			],
 			"Yellow": [
 				{
-					"rgba": "#ffff00ff",
+					"rgba": "#5090e0ff",
 					"start": "1"
 				},
 				{
-					"rgba": "#000000ff",
+					"rgba": "#080810ff",
 					"start": "1"
 				}
 			]
