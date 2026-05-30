@@ -303,12 +303,19 @@ public:
 	//---from VST3EditorDelegate-----------
 	/** verify a view after it was created */
 	/*
-	VSTGUI::CView* PLUGIN_API verifyView(VSTGUI::CView* view, 
+	VSTGUI::CView* PLUGIN_API verifyView(VSTGUI::CView* view,
 											const VSTGUI::UIAttributes& attributes,
-											const VSTGUI::IUIDescription* description, 
+											const VSTGUI::IUIDescription* description,
 											VSTGUI::VST3Editor* editor) SMTG_OVERRIDE;
 	*/
-	
+
+	/** create a custom view (matches VST3EditorDelegate::createCustomView; NO PLUGIN_API) */
+	VSTGUI::CView* createCustomView(VSTGUI::UTF8StringPtr name,
+	                                const VSTGUI::UIAttributes& attributes,
+	                                const VSTGUI::IUIDescription* description,
+	                                VSTGUI::VST3Editor* editor) SMTG_OVERRIDE;
+
+
 	/** called when a sub controller should be created.
 		The controller is now owned by the editor, which will call forget() if it is a CBaseObject,
 		release() if it is a Steinberg::FObject or it will be simply deleted if the frame gets

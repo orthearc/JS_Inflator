@@ -747,6 +747,19 @@
 				"children": {
 					"CView": {
 						"attributes": {
+							"class": "CView",
+							"custom-view-name": "StarfieldView",
+							"mouse-enabled": "false",
+							"opacity": "1",
+							"origin": "0, 0",
+							"size": "1300, 1300",
+							"transparent": "false",
+							"uidesc-label": "Starfield",
+							"wants-focus": "false"
+						}
+					},
+					"CView": {
+						"attributes": {
 							"bitmap": "twarch_background",
 							"class": "CView",
 							"mouse-enabled": "true",

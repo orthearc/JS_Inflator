@@ -4,7 +4,10 @@
 
 #include "JSIF_controller.h"
 #include "JSIF_cids.h"
+#include "StarfieldView.h"
 #include "vstgui/plugin-bindings/vst3editor.h"
+
+#include <cstring>
 
 #include "pluginterfaces/base/ustring.h"
 #include "base/source/fstring.h"
@@ -648,6 +651,22 @@ VSTGUI::IController* JSIF_Controller::createSubController(
 	}
 	return nullptr;
 };
+
+//------------------------------------------------------------------------
+// createCustomView : instantiate the animated starfield background.
+// Signature matches VSTGUI::VST3EditorDelegate::createCustomView exactly
+// (no PLUGIN_API) so SMTG_OVERRIDE binds to the virtual base method.
+//------------------------------------------------------------------------
+VSTGUI::CView* JSIF_Controller::createCustomView(
+	VSTGUI::UTF8StringPtr name,
+	const VSTGUI::UIAttributes& /*attributes*/,
+	const VSTGUI::IUIDescription* /*description*/,
+	VSTGUI::VST3Editor* /*editor*/)
+{
+	if (name && std::strcmp(name, "StarfieldView") == 0)
+		return new yg331::StarfieldView(VSTGUI::CRect(0, 0, 1300, 1300));
+	return nullptr;
+}
 
 
 //------------------------------------------------------------------------
