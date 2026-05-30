@@ -27,7 +27,7 @@ TITLE_BOX  = (8, 10, 410, 100)          # area painted flat navy
 GLYPH_BOX  = (55, 22, 300, 92)          # where the original 'Inflator' letters live
 TITLE_VCENTER = 53                       # vertical center of the 'Inflator' text
 WORD_COLOR = (220, 232, 255)            # uniform bright lavender-white
-LOGO_X, LOGO_H = 12, 50                  # logo left-x + height; vcenter-aligned to title
+LOGO_H, LOGO_RIGHT_MARGIN, LOGO_VCENTER = 56, 34, 50   # top-RIGHT corner placement
 LOGO_COLOR = (96, 160, 238)             # accent blue
 
 arr = np.asarray(Image.open(SRC).convert('RGB')).astype(np.float32)
@@ -70,8 +70,7 @@ lw = int(LOGO_H * logo.width / logo.height)
 logo = logo.resize((lw, LOGO_H), Image.LANCZOS)
 la = np.asarray(logo).astype(np.float32)
 col = np.zeros_like(la); col[..., 0], col[..., 1], col[..., 2] = LOGO_COLOR; col[..., 3] = la[..., 3]
-img.alpha_composite(Image.fromarray(col.astype(np.uint8), 'RGBA'),
-                    (LOGO_X, TITLE_VCENTER - LOGO_H//2))
+logo_img = Image.fromarray(col.astype(np.uint8), 'RGBA')   # composited at top-right AFTER keying
 
 # alpha: void keying (keep title band opaque)
 chroma = arr.max(2) - arr.min(2)
@@ -79,6 +78,9 @@ void = (L < 52) & (chroma < 18) & (text < 0.05) & (glow < 0.05)
 void[TITLE_BOX[1]:TITLE_BOX[3], TITLE_BOX[0]:TITLE_BOX[2]] = False
 alpha = np.asarray(img)[..., 3].copy()
 alpha[void] = 0
-res = np.dstack([np.asarray(img)[..., :3], alpha])
-Image.fromarray(res, 'RGBA').save(OUT)
-print('wrote', OUT, '| void %:', round(100*void.mean(), 1))
+res = Image.fromarray(np.dstack([np.asarray(img)[..., :3], alpha]), 'RGBA')
+# Arc logo in the TOP-RIGHT corner, composited last so the starfield key can't erase it
+res.alpha_composite(logo_img, (res.width - LOGO_RIGHT_MARGIN - logo_img.width,
+                               LOGO_VCENTER - LOGO_H//2))
+res.save(OUT)
+print('wrote', OUT, '| void %:', round(100*void.mean(), 1), '| logo at top-right')
