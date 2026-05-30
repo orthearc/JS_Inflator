@@ -21,13 +21,14 @@ GLOW_GAIN = 0.35    # low glow    (was 1.15)
 EDGE  = 6
 NORM  = 34.0
 
-# Title region (1300-space): painted flat navy, then logo+wordmark drawn on top.
-TITLE_BOX = (18, 10, 410, 104)          # x0,y0,x1,y1
-LOGO_XY, LOGO_H = (34, 18), 80          # logo top-left + height px
-WORD, WORD_XY, WORD_SZ = "Inflator", (140, 14), 50
-WORD_COLOR = (220, 232, 255, 255)       # uniform bright lavender-white
-LOGO_COLOR = (92, 156, 236)             # accent blue
-FONT = "C:/Windows/Fonts/segoeuib.ttf"
+# Title region (1300-space): painted flat navy, then ORIGINAL 'Inflator' glyphs
+# (recolored to one uniform color) + the Arc logo aligned to the title's vcenter.
+TITLE_BOX  = (8, 10, 410, 100)          # area painted flat navy
+GLYPH_BOX  = (55, 22, 300, 92)          # where the original 'Inflator' letters live
+TITLE_VCENTER = 53                       # vertical center of the 'Inflator' text
+WORD_COLOR = (220, 232, 255)            # uniform bright lavender-white
+LOGO_X, LOGO_H = 12, 50                  # logo left-x + height; vcenter-aligned to title
+LOGO_COLOR = (96, 160, 238)             # accent blue
 
 arr = np.asarray(Image.open(SRC).convert('RGB')).astype(np.float32)
 L = 0.299*arr[..., 0] + 0.587*arr[..., 1] + 0.114*arr[..., 2]
@@ -49,23 +50,28 @@ out = out*(1-text[..., None]) + CORE[None, None, :]*text[..., None]
 out = np.clip(out, 0, 255).astype(np.uint8)
 
 img = Image.fromarray(out, 'RGB').convert('RGBA')
-# flat navy title band
+# flat navy over the whole title band (covers the messy embossed original)
 ImageDraw.Draw(img).rectangle(TITLE_BOX, fill=(int(NAVY[0]), int(NAVY[1]), int(NAVY[2]), 255))
 
-# Arc ring logo: render SVG, crop content, recolor, paste
+# ORIGINAL 'Inflator' letterforms -> uniform color (anti-aliased via luminance->alpha)
+src = np.asarray(Image.open(SRC).convert('RGB').crop(GLYPH_BOX)).astype(np.float32)
+Lg = 0.299*src[..., 0] + 0.587*src[..., 1] + 0.114*src[..., 2]
+ga = np.clip((Lg - 65) / 95.0, 0, 1)                 # band(46)->0, light letters->1
+glyph = np.zeros((ga.shape[0], ga.shape[1], 4), np.uint8)
+glyph[..., 0], glyph[..., 1], glyph[..., 2] = WORD_COLOR
+glyph[..., 3] = (ga*255).astype(np.uint8)
+img.alpha_composite(Image.fromarray(glyph, 'RGBA'), (GLYPH_BOX[0], GLYPH_BOX[1]))
+
+# Arc ring logo: render SVG, crop content, recolor, vcenter-align to the title
 png = cairosvg.svg2png(url=LOGO_SVG, output_width=1024, output_height=1024)
 logo = Image.open(io.BytesIO(png)).convert('RGBA')
 logo = logo.crop(logo.getbbox())
-w = int(LOGO_H * logo.width / logo.height)
-logo = logo.resize((w, LOGO_H), Image.LANCZOS)
+lw = int(LOGO_H * logo.width / logo.height)
+logo = logo.resize((lw, LOGO_H), Image.LANCZOS)
 la = np.asarray(logo).astype(np.float32)
 col = np.zeros_like(la); col[..., 0], col[..., 1], col[..., 2] = LOGO_COLOR; col[..., 3] = la[..., 3]
-logo = Image.fromarray(col.astype(np.uint8), 'RGBA')
-img.alpha_composite(logo, LOGO_XY)
-
-# uniform wordmark
-d = ImageDraw.Draw(img)
-d.text(WORD_XY, WORD, font=ImageFont.truetype(FONT, WORD_SZ), fill=WORD_COLOR)
+img.alpha_composite(Image.fromarray(col.astype(np.uint8), 'RGBA'),
+                    (LOGO_X, TITLE_VCENTER - LOGO_H//2))
 
 # alpha: void keying (keep title band opaque)
 chroma = arr.max(2) - arr.min(2)
