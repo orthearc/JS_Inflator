@@ -84,8 +84,8 @@ endif(SMTG_ENABLE_VSTGUI_SUPPORT)
 
 smtg_target_add_plugin_snapshots (JS_Inflator
     RESOURCES
-        resource/A6B5CA9F4C4F5B9388F837774504BD37_snapshot.png
-        resource/A6B5CA9F4C4F5B9388F837774504BD37_snapshot_2.0x.png
+        resource/C682CEDBB8614B93B4FEB3BE695156CB_snapshot.png
+        resource/C682CEDBB8614B93B4FEB3BE695156CB_snapshot_2.0x.png
 )
 
 target_link_libraries(JS_Inflator
