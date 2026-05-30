@@ -1113,8 +1113,56 @@ else if (filter[channel].TAP_CONDITION == 3) \
 		dnSample_81[channel].buff[2] = inter_82[0];
 		dnSample_81[channel].buff[1] = inter_82[1];
 		HB_dnsample(&dnSample_81[channel], out);
-		
+
 		return;
+	}
+
+	// Generic min-phase half-band interpolation: 1 in -> (1<<nStages) out.
+	void JSIF_Processor::Fir_up_n(Vst::Sample64* in, Vst::Sample64* out, int32 channel, int32 nStages)
+	{
+	    Vst::Sample64 a[64], b[64];
+	    a[0] = *in;
+	    int32 count = 1;
+	    Vst::Sample64* src = a; Vst::Sample64* dst = b;
+	    for (int32 k = 0; k < nStages; k++)
+	    {
+	        Flt& f = upStage[k][channel];
+	        const size_t shift = sizeof(double) * (f.TAP_SIZE - 1) / 2;
+	        for (int32 i = 0; i < count; i++)
+	        {
+	            memmove(f.buff + 1, f.buff, shift);
+	            f.buff[0] = src[i];
+	            HB_upsample(&f, &dst[2 * i]);
+	        }
+	        count *= 2;
+	        Vst::Sample64* t = src; src = dst; dst = t;
+	    }
+	    memcpy(out, src, sizeof(Vst::Sample64) * count);
+	}
+
+	// Generic min-phase half-band decimation: (1<<nStages) in -> 1 out.
+	void JSIF_Processor::Fir_dn_n(Vst::Sample64* in, Vst::Sample64* out, int32 channel, int32 nStages)
+	{
+	    Vst::Sample64 a[64], b[64];
+	    int32 count = 1 << nStages;
+	    memcpy(a, in, sizeof(Vst::Sample64) * count);
+	    Vst::Sample64* src = a; Vst::Sample64* dst = b;
+	    for (int32 k = nStages - 1; k >= 0; k--)   // highest-rate stage first
+	    {
+	        Flt& f = dnStage[k][channel];
+	        const size_t shift = sizeof(double) * (f.TAP_SIZE - 2);
+	        const int32 outCount = count / 2;
+	        for (int32 i = 0; i < outCount; i++)
+	        {
+	            memmove(f.buff + 3, f.buff + 1, shift);
+	            f.buff[2] = src[2 * i];
+	            f.buff[1] = src[2 * i + 1];
+	            HB_dnsample(&f, &dst[i]);
+	        }
+	        count = outCount;
+	        Vst::Sample64* t = src; src = dst; dst = t;
+	    }
+	    *out = src[0];
 	}
 
 } // namespace yg331
