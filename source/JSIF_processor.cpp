@@ -821,8 +821,8 @@ else if (filter[channel].TAP_CONDITION == 3) \
 			if (Band_Split[channel].SR != targetSampleRate) 
 				Band_Split_set(&Band_Split[channel], 240.0, 2400.0, targetSampleRate);
         
-        double up_x[8] = {0.0, };
-        double up_y[8] = {0.0, };
+        double up_x[64] = {0.0, };
+        double up_y[64] = {0.0, };
 
 		Meter = 0.0;
 		double t = 0.0;
