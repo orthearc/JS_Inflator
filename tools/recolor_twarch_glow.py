@@ -36,9 +36,22 @@ local = np.asarray(Image.fromarray(L.astype(np.uint8)).filter(
     ImageFilter.GaussianBlur(LOCAL_R))).astype(np.float32)
 
 ink  = np.where(local > 90, np.clip(local - L - EDGE, 0, None), 0)
-lite = np.where(local < 95, np.clip(L - local - EDGE, 0, None), 0)
+# 'lite' (bright features on dark windows) only in the ERODED interior of dark regions,
+# so meter-panel frames / well rims / boundary bevels stop glowing — only interior text does.
+_darkin = np.asarray(Image.fromarray(((local < 95) * 255).astype(np.uint8))
+                     .filter(ImageFilter.MinFilter(9))) > 127
+lite = np.where(_darkin, np.clip(L - local - EDGE, 0, None), 0)
 text = np.clip(np.maximum(ink, lite) / NORM, 0, 1)
 text[TITLE_BOX[1]:TITLE_BOX[3], TITLE_BOX[0]:TITLE_BOX[2]] = 0   # suppress glow in title box
+
+# Suppress glow on structural bevels (not text): the meter-panel frame band + the gain-box wells.
+ML, MT, MR, MB = 421, 163, 878, 697
+yy, xx = np.mgrid[0:L.shape[0], 0:L.shape[1]]
+outer = (xx >= ML-15) & (xx <= MR+15) & (yy >= MT-15) & (yy <= MB+15)
+inner = (xx >= ML+15) & (xx <= MR-15) & (yy >= MT+15) & (yy <= MB-15)
+text[outer & ~inner] = 0                                         # meter-panel frame perimeter
+for gx in (94, 1107):                                            # gain-box wells (covered by CTextEdit)
+    text[204:282, gx-14:gx+114] = 0
 
 Ln = L[..., None]
 base = np.where(Ln <= 128, NAVY*(Ln/128.0), NAVY + (WHITE-NAVY)*((Ln-128)/127.0))
