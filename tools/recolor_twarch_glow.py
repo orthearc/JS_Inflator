@@ -57,12 +57,22 @@ for gx in (94, 1107):                                            # gain-box well
 
 Ln = L[..., None]
 base = np.where(Ln <= 128, NAVY*(Ln/128.0), NAVY + (WHITE-NAVY)*((Ln-128)/127.0))
+base[163:697, 421:878] = NAVY   # flat navy in the meter window: text comes purely from the glow,
+                                # so anti-aliased letter midtones don't leave grey patches
 glow = np.asarray(Image.fromarray((text*255).astype(np.uint8)).filter(
     ImageFilter.GaussianBlur(GLOW_R))).astype(np.float32)/255.0
 
 out = base + HALO[None, None, :]*glow[..., None]*GLOW_GAIN
 out = out*(1-text[..., None]) + CORE[None, None, :]*text[..., None]
 out = np.clip(out, 0, 255).astype(np.uint8)
+
+# Meter window (OS:, scale numbers, IN/FX/OUT): render the text as ONE uniform color.
+# (Extract the original bright-on-dark text as alpha and flat-fill it — no glow unevenness,
+#  no grey midtones, no inter-letter blobs. Same approach as the title.)
+MWC = np.array((224, 234, 255), np.float32)                      # uniform label color
+malpha = np.clip((L[163:697, 421:878] - 72) / 85.0, 0, 1)[..., None]
+win = NAVY[None, None, :]*(1 - malpha) + MWC[None, None, :]*malpha
+out[163:697, 421:878] = np.clip(win, 0, 255).astype(np.uint8)
 
 img = Image.fromarray(out, 'RGB').convert('RGBA')
 # flat navy over the whole title band (covers the messy embossed original)
