@@ -9,7 +9,10 @@ typedef enum {
 	overSample_2x,
 	overSample_4x,
 	overSample_8x,
-	overSample_num = 3
+	overSample_16x,
+	overSample_32x,
+	overSample_64x,
+	overSample_num = 6
 } overSample;
 
 typedef struct _SVF {
