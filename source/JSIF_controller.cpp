@@ -299,7 +299,7 @@ tresult PLUGIN_API JSIF_Controller::initialize(FUnknown* context)
     tag          = kParamOutput;
     flags        = Vst::ParameterInfo::kCanAutomate;
     minPlain     = -12.0;
-    maxPlain     = 0.0;
+    maxPlain     = 12.0;
     defaultPlain = 0.0;
     stepCount    = 0;
     auto* ParamOut = new Vst::RangeParameter(STR16("Output"), tag, STR16("dB"), minPlain, maxPlain, defaultPlain, stepCount, flags);
@@ -499,7 +499,7 @@ tresult PLUGIN_API JSIF_Controller::setState(IBStream* state)
     if (streamer.readDouble(savedInput)  == false) savedInput  = 0.5;
     if (streamer.readDouble(savedEffect) == false) savedEffect = 0.0;
     if (streamer.readDouble(savedCurve)  == false) savedCurve  = 0.5;
-    if (streamer.readDouble(savedOutput) == false) savedOutput = 1.0;
+    if (streamer.readDouble(savedOutput) == false) savedOutput = 0.5;
     if (streamer.readDouble(savedOS)     == false) savedOS     = 0.0;
     if (streamer.readInt32 (savedClip)   == false) savedClip   = 0;
     if (streamer.readInt32 (savedIn)     == false) savedIn     = 1;

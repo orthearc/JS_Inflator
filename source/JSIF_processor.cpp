@@ -758,7 +758,7 @@ else if (filter[channel].TAP_CONDITION == 3) \
 	)
 	{
 		Vst::Sample64 In_db  = expf(logf(10.f) * (24.0 * fInput  - 12.0) / 20.f);
-		Vst::Sample64 Out_db = expf(logf(10.f) * (12.0 * fOutput - 12.0) / 20.f);
+		Vst::Sample64 Out_db = expf(logf(10.f) * (24.0 * fOutput - 12.0) / 20.f);
 
 		curvepct = fCurve - 0.5;
 		curveA =        1.5 + curvepct; 
