@@ -434,7 +434,7 @@ private:
     Steinberg::Vst::ParamValue statePhase  = 0.0;
     Steinberg::int32           stateBypass = 0;
 
-	Steinberg::Vst::ParamValue stateGUI    = 0.0;
+	Steinberg::Vst::ParamValue stateGUI    = 1.0;  // default GUI = Twarch (matches GuiSwitch default)
     
     Steinberg::Vst::ParamValue vuInL = 0.0, vuInR = 0.0, vuOutL = 0.0, vuOutR = 0.0, vuEffect = 0.0;
 };
