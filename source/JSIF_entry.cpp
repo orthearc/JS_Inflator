@@ -9,7 +9,7 @@
 
 #include "public.sdk/source/main/pluginfactory.h"
 
-#define stringPluginName "JS Inflator"
+#define stringPluginName "Arc Inflator"
 
 using namespace Steinberg::Vst;
 using namespace yg331;
@@ -21,9 +21,9 @@ using namespace yg331;
 // GetPluginFactory function!
 //------------------------------------------------------------------------
 
-BEGIN_FACTORY_DEF ("yg331", 
-			       "https://github.com/kiriki-liszt/", 
-			       "mailto:info@mycompanyname.com")
+BEGIN_FACTORY_DEF ("The Arc",
+			       "https://github.com/orthearc/",
+			       "mailto:orthearc@gmail.com")
 
 	//---First Plug-in included in this factory-------
 	// its kVstAudioEffectClass component
