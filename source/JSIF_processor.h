@@ -363,6 +363,19 @@ protected:
 	static SMTG_CONSTEXPR int32 dnTap_82 = 33;
 	static SMTG_CONSTEXPR int32 dnTap_83 = 21;
 
+	// Generic half-band cascade for x16/x32/x64 (6 stages: indices 0..5)
+	static SMTG_CONSTEXPR int32 kMaxStages = 6;
+	std::vector<Flt> upStage[kMaxStages];   // [stage][channel]
+	std::vector<Flt> dnStage[kMaxStages];
+	static SMTG_CONSTEXPR int32 upStageTap[kMaxStages] = { 87, 33, 21, 17, 15, 13 };
+	static SMTG_CONSTEXPR int32 dnStageTap[kMaxStages] = { 113, 33, 21, 17, 15, 13 };
+	// Min-phase FIR latencies for the new factors (MEASURED in Task 3.7).
+	int32 latency_Fir_x16 = 0, latency_Fir_x32 = 0, latency_Fir_x64 = 0;
+	// Linear-phase (r8brain) resamplers for the new factors.
+	std::vector<r8b::CDSPResampler24*> upSample_16x_Lin, upSample_32x_Lin, upSample_64x_Lin;
+	std::vector<r8b::CDSPResampler24*> dnSample_16x_Lin, dnSample_32x_Lin, dnSample_64x_Lin;
+	int32 latency_r8b_x16 = 0, latency_r8b_x32 = 0, latency_r8b_x64 = 0;
+
 	// latency_r8b_x2 = -1 + 2 * upSample_2x_Lin[0].getInLenBeforeOutPos(1) +1;
 	// latency_r8b_x4 = -1 + 2 * upSample_4x_Lin[0].getInLenBeforeOutPos(1);
 	// latency_r8b_x8 = -1 + 2 * upSample_8x_Lin[0].getInLenBeforeOutPos(1);
@@ -379,6 +392,9 @@ protected:
 	void Fir_x4_dn(Sample64* in, Sample64* out, int32 channel);
 	void Fir_x8_up(Sample64* in, Sample64* out, int32 channel);
 	void Fir_x8_dn(Sample64* in, Sample64* out, int32 channel);
+
+	void Fir_up_n(Sample64* in, Sample64* out, int32 channel, int32 nStages);
+	void Fir_dn_n(Sample64* in, Sample64* out, int32 channel, int32 nStages);
 };
 //------------------------------------------------------------------------
 } // namespace yg331
