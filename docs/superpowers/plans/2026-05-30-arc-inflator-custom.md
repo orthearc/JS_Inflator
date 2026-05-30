@@ -16,20 +16,22 @@
 
 This repo has **no unit-test harness** (unlike sibling projects). The verification loop per task is therefore: **make change → build x64 Release → run the gate** where the gate is one of: compiler success, the VST3 validator (`validator.exe` from the SDK), a measured behavioral check (param range, reported latency, aliasing FFT, cascade flatness), or a visual check in the validator/host. Each task ends with a commit. "Expected" outputs are stated for every gate. Where a value must be *measured* (FIR latencies), the exact measurement procedure is given — that is a concrete instruction, not a placeholder.
 
-**Build/validate commands (reused throughout)** — run from the repo root `C:\Users\The Arc\Documents\Arc Inflator`:
+**Build/validate commands (reused throughout)** — run from the repo root `C:\Users\The Arc\Documents\Arc Inflator`. **Environment notes (verified Phase 0):** `cmake` is not on PATH — use the full path `C:/Program Files/CMake/bin/cmake.exe`. Two extra flags are REQUIRED on this machine: `-DCMAKE_POLICY_VERSION_MINIMUM=3.5` (CMake 4.2 vs the SDK's older policy minimums) and `-DSMTG_CREATE_PLUGIN_LINK=0` (the default symlink-into-Common/VST3 post-build needs Administrator/Developer Mode and otherwise fails the build with MSB3073).
 
-```powershell
-# Configure (once; re-run after CMakeLists changes)
-cmake -B build -G "Visual Studio 17 2022" -A x64 -DSMTG_WIN=1 `
-  -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=0 -DSMTG_ENABLE_VST3_HOSTING_EXAMPLES=0 `
-  -DSMTG_MDA_VST3_VST2_COMPATIBLE=0 -DSMTG_CREATE_BUNDLE_FOR_WINDOWS=0
-# Build
-cmake --build build --config Release --target JS_Inflator
-# Validate (path may vary; validator is built by the SDK)
-& "build/bin/Release/validator.exe" "build/VST3/Release/Arc Inflator.vst3"
+```bash
+CM="C:/Program Files/CMake/bin/cmake.exe"
+# Configure (re-run after CMakeLists changes)
+"$CM" -B build -G "Visual Studio 17 2022" -A x64 -DSMTG_WIN=1 \
+  -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DSMTG_CREATE_PLUGIN_LINK=0 \
+  -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=0 -DSMTG_ENABLE_VST3_HOSTING_EXAMPLES=0 \
+  -DSMTG_CREATE_BUNDLE_FOR_WINDOWS=0
+# Build (the SDK auto-runs the validator as a post-build step and prints "Result: N tests passed, 0 tests failed")
+"$CM" --build build --config Release --target JS_Inflator
 ```
 
-The compiled plugin lands at `build/VST3/Release/Arc Inflator.vst3` (after Area E renames it; before that, `JS Inflator.vst3`). "GATE PASS" = build exits 0 **and** the named check holds.
+The compiled plugin lands at `build/VST3/Release/<name>.vst3` — `JS_Inflator.vst3` until the CMake target is renamed; the host-visible name comes from `version.h`. The validator runs automatically on build; "GATE PASS" = build exits 0 **and** the validator reports `0 tests failed` **and** the named behavioral check holds. Baseline (unmodified) = **47 tests passed, 0 failed**. To validate manually: `& "build/bin/Release/validator.exe" "build/VST3/Release/JS_Inflator.vst3"`.
+
+> Note: the host-visible bundle filename is `JS_Inflator.vst3` (the CMake target name), even though `version.h` `stringOriginalFilename` says "Arc Inflator.vst3" — that string sets the Windows file *description/metadata*, not the bundle filename. To make the on-disk file "Arc Inflator.vst3", rename the CMake target or set `OUTPUT_NAME` (Phase 1, Task 1.4 — adjust there).
 
 ---
 
@@ -208,19 +210,26 @@ git commit -m "feat(identity): rename snapshot to new processor UID"
 
 ### Task 1.4: Output filename = "Arc Inflator.vst3" + version bump
 
-**Files:** Modify `CMakeLists.txt:22` (version); confirm Windows output name comes from `version.h`
+**Files:** Modify `CMakeLists.txt:22` (version) and add an `OUTPUT_NAME` for the target
 
 - [ ] **Step 1: Bump the project version**
 
 `CMakeLists.txt:22`: `VERSION 2.0.3.2` → `VERSION 1.0.0.0` (Arc Inflator v1; drives `projectversion.h`/`FULL_VERSION_STR`).
 
-- [ ] **Step 2: (mac parity, optional) bundle id/company**
+- [ ] **Step 2: Set the on-disk bundle filename to "Arc Inflator"**
 
-`CMakeLists.txt:114-115` (inside `if(SMTG_MAC)`): `BUNDLE_IDENTIFIER io.github.yg331.JS.Inflator` → `com.thearc.arcinflator`; `COMPANY_NAME "yg331"` → `"The Arc"`. (No effect on the Windows build — Windows identity is in `version.h`.)
+The `.vst3` filename = the CMake **target name** (`JS_Inflator`), NOT `version.h`'s `stringOriginalFilename` (that only sets VERSIONINFO metadata). Keep the internal target id `JS_Inflator` (surgical — avoids editing ~15 references) and add, right after `smtg_add_vst3plugin(JS_Inflator …)` (after line 40 in `CMakeLists.txt`):
+```cmake
+set_target_properties(JS_Inflator PROPERTIES OUTPUT_NAME "Arc Inflator")
+```
 
-- [ ] **Step 3: Reconfigure + build**
+- [ ] **Step 3: (mac parity, optional) bundle id/company**
 
-Run Configure + Build. Expected: output is now `build/VST3/Release/Arc Inflator.vst3` (driven by `version.h` `stringOriginalFilename`).
+`CMakeLists.txt:114-115` (inside `if(SMTG_MAC)`): `BUNDLE_IDENTIFIER io.github.yg331.JS.Inflator` → `com.thearc.arcinflator`; `COMPANY_NAME "yg331"` → `"The Arc"`. (No effect on the Windows build.)
+
+- [ ] **Step 4: Reconfigure + build**
+
+Run Configure + Build. Expected: output is now `build/VST3/Release/Arc Inflator.vst3`; validator still reports `0 tests failed`.
 
 - [ ] **Step 4: Validate identity**
 
