@@ -37,6 +37,8 @@ smtg_add_vst3plugin(JS_Inflator
     source/JSIF_controller.h
     source/JSIF_controller.cpp
     source/JSIF_entry.cpp
+    source/StarfieldView.h
+    source/StarfieldView.cpp
 )
 set_target_properties(JS_Inflator PROPERTIES OUTPUT_NAME "Arc Inflator")
 
