@@ -389,7 +389,7 @@ tresult PLUGIN_API JSIF_Controller::initialize(FUnknown* context)
 	Vst::StringListParameter* GuiSwitch = new Vst::StringListParameter(STR("GUI Switch"), kGuiSwitch);
 	GuiSwitch->appendString(STR("Original"));
 	GuiSwitch->appendString(STR("Twarch"));
-	GuiSwitch->setNormalized(GuiSwitch->toNormalized(0));
+	GuiSwitch->setNormalized(GuiSwitch->toNormalized(1));
 	GuiSwitch->addDependent(this);
 	uiParameters.addParameter(GuiSwitch);
 
@@ -506,7 +506,7 @@ tresult PLUGIN_API JSIF_Controller::setState(IBStream* state)
     if (streamer.readInt32 (savedSplit)  == false) savedSplit  = 0;
     if (streamer.readDouble(savedZoom)   == false) savedZoom   = 0.0;
     if (streamer.readDouble(savedPhase)  == false) savedPhase  = 0.0;
-    if (streamer.readDouble(savedGUI)    == false) savedGUI    = 0.0;
+    if (streamer.readDouble(savedGUI)    == false) savedGUI    = 1.0;
     //if (streamer.readInt32 (savedBypass) == false) return kResultFalse;
 
     setParamNormalized(kParamInput,  savedInput);
