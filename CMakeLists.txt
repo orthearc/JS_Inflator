@@ -19,7 +19,7 @@ project(JS_Inflator
     # This is your plug-in version number. Change it here only.
     # Version number symbols usable in C++ can be found in
     # source/version.h and ${PROJECT_BINARY_DIR}/projectversion.h.
-    VERSION 2.0.3.2
+    VERSION 1.0.0.0
     DESCRIPTION "JS Inflator VST 3 Plug-in"
 )
 
@@ -38,6 +38,7 @@ smtg_add_vst3plugin(JS_Inflator
     source/JSIF_controller.cpp
     source/JSIF_entry.cpp
 )
+set_target_properties(JS_Inflator PROPERTIES OUTPUT_NAME "Arc Inflator")
 
 #- VSTGUI Wanted ----
 if(SMTG_ENABLE_VSTGUI_SUPPORT)
@@ -111,8 +112,8 @@ smtg_target_configure_version_file(JS_Inflator)
 
 if(SMTG_MAC)
     smtg_target_set_bundle(JS_Inflator
-        BUNDLE_IDENTIFIER io.github.yg331.JS.Inflator
-        COMPANY_NAME "yg331"
+        BUNDLE_IDENTIFIER com.thearc.arcinflator
+        COMPANY_NAME "The Arc"
     )
     smtg_target_set_debug_executable(JS_Inflator
         "/Applications/VST3PluginTestHost.app"
