@@ -52,7 +52,8 @@ init_Split = false,
 init_Phase = false; // Min phase
 
 static const overSample
-init_OS = overSample_1x;
+init_OS = overSample_1x,
+init_OSOffline = overSample_16x;
 
 enum VuMeterTag {
     VuMeter_inL,

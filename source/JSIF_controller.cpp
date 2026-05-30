@@ -337,8 +337,22 @@ tresult PLUGIN_API JSIF_Controller::initialize(FUnknown* context)
     OS->appendString(STR("x2"));
     OS->appendString(STR("x4"));
     OS->appendString(STR("x8"));
+    OS->appendString(STR("x16"));
+    OS->appendString(STR("x32"));
+    OS->appendString(STR("x64"));
     OS->setNormalized(OS->toNormalized(0));
     parameters.addParameter(OS);
+
+    Vst::StringListParameter* OSOff = new Vst::StringListParameter(STR("OS Offline"), kParamOSOffline);
+    OSOff->appendString(STR("x1"));
+    OSOff->appendString(STR("x2"));
+    OSOff->appendString(STR("x4"));
+    OSOff->appendString(STR("x8"));
+    OSOff->appendString(STR("x16"));
+    OSOff->appendString(STR("x32"));
+    OSOff->appendString(STR("x64"));
+    OSOff->setNormalized(OSOff->toNormalized(static_cast<int>(init_OSOffline)));
+    parameters.addParameter(OSOff);
 
     tag          = kParamSplit;
     stepCount    = 1;

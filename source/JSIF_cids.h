@@ -30,6 +30,7 @@ enum {
     kParamPhase,
     kParamIn,        // ByPass
     kParamBypass,
+    kParamOSOffline,   // tag 16
     kGuiSwitch = 1000
 };
 //------------------------------------------------------------------------
