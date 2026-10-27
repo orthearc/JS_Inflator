@@ -74,6 +74,8 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: apple/AudioUnitSDK
+        # 1.3.0+ needs C++20 (std::span); the SDK 3.7.12 AU wrapper builds as C++17.
+        ref: AudioUnitSDK-1.1.0
         path: "./AudioUnitSDK"
 
     # -Wno-nan-infinity-disabled: VSTGUI builds with fast-math and -Werror, and newer
@@ -109,12 +111,14 @@ jobs:
 
     # AU wrapper is best-effort: a failure here must not block the VST3 artifact.
     - name: Build AU
+      id: au
       continue-on-error: true
       run: cmake --build "${{ github.workspace }}/${{ env.build-dir }}" --config ${{ env.build-type }} --target JS_Inflator-au
 
     # The SDK links Resources/plugin.vst3 as a symlink to an absolute runner path, which
     # dangles once downloaded. Replace it with a real copy of the VST3 bundle.
     - name: Embed VST3 in AU bundle
+      if: steps.au.outcome == 'success'
       run: |
         comp="build/VST3/${{ env.build-type }}/ArcInflator.component"
         if [ -d "$comp" ]; then
@@ -128,12 +132,12 @@ jobs:
       run: |
         cd "build/VST3/${{ env.build-type }}"
         codesign --force --deep --sign - "Arc Inflator.vst3"
-        if [ -d ArcInflator.component ]; then codesign --force --deep --sign - ArcInflator.component; fi
+        if [ "${{ steps.au.outcome }}" = success ]; then codesign --force --deep --sign - ArcInflator.component; fi
 
     - name: Check architectures
       run: |
         lipo -info "build/VST3/${{ env.build-type }}/Arc Inflator.vst3/Contents/MacOS/"*
-        if [ -d "build/VST3/${{ env.build-type }}/ArcInflator.component" ]; then
+        if [ "${{ steps.au.outcome }}" = success ]; then
           lipo -info "build/VST3/${{ env.build-type }}/ArcInflator.component/Contents/MacOS/"*
         fi
 
