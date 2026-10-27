@@ -78,7 +78,7 @@ jobs:
 
     # -Wno-nan-infinity-disabled: VSTGUI builds with fast-math and -Werror, and newer
     # clang rejects rapidjson's infinity() under fast-math.
-    # Universal (arm64 + x86_64) via SMTG_BUILD_UNIVERSAL_BINARY. Ad-hoc signed ("-"):
+    # Universal (arm64 + x86_64) via SMTG_BUILD_UNIVERSAL_BINARY. Ad-hoc signed below:
     # loads on the build machine's architecture, but other Macs need Developer ID +
     # notarization, or `xattr -cr` on the bundle.
     # VSTGUI adds -Wall -Werror on Apple hosts; new Xcode clang flags deprecations in
@@ -100,8 +100,8 @@ jobs:
         -DSMTG_ENABLE_VST3_HOSTING_EXAMPLES=OFF
         -DSMTG_ENABLE_AUV2_BUILDS=ON
         -DSMTG_AUDIOUNIT_SDK_PATH="${{ github.workspace }}/AudioUnitSDK"
-        -DSMTG_CODE_SIGN_IDENTITY_MAC=-
-        -DSMTG_XCODE_OTHER_CODE_SIGNING_FLAGS=
+        -DSMTG_DISABLE_CODE_SIGNING=ON
+        -DSMTG_CREATE_PLUGIN_LINK=OFF
         -DGITHUB_ACTIONS=ON
 
     - name: Build VST3
@@ -121,6 +121,14 @@ jobs:
           rm -rf "$comp/Contents/Resources/plugin.vst3"
           cp -R "build/VST3/${{ env.build-type }}/Arc Inflator.vst3" "$comp/Contents/Resources/plugin.vst3"
         fi
+
+    # SDK signing is off (its post-build step signs "<target>.vst3", not the OUTPUT_NAME
+    # bundle), so ad-hoc sign the finished bundles here.
+    - name: Ad-hoc sign
+      run: |
+        cd "build/VST3/${{ env.build-type }}"
+        codesign --force --deep --sign - "Arc Inflator.vst3"
+        if [ -d ArcInflator.component ]; then codesign --force --deep --sign - ArcInflator.component; fi
 
     - name: Check architectures
       run: |
