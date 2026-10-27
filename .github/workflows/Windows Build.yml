@@ -41,6 +41,7 @@ jobs:
         -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=OFF
         -DSMTG_ENABLE_VST3_HOSTING_EXAMPLES=OFF
         -DSMTG_CREATE_BUNDLE_FOR_WINDOWS=OFF
+        -DSMTG_RUN_VST_VALIDATOR=OFF
         -DGITHUB_ACTIONS=ON
 
     - name: Build
@@ -80,6 +81,11 @@ jobs:
     # Universal (arm64 + x86_64) via SMTG_BUILD_UNIVERSAL_BINARY. Ad-hoc signed ("-"):
     # loads on the build machine's architecture, but other Macs need Developer ID +
     # notarization, or `xattr -cr` on the bundle.
+    # VSTGUI adds -Wall -Werror on Apple hosts; new Xcode clang flags deprecations in
+    # the pinned SDK's own code, so drop -Werror there (warnings still print).
+    - name: Relax VSTGUI -Werror
+      run: sed -i '' 's/-Wall -Werror/-Wall/' vst3sdk/vstgui4/vstgui/*/CMakeLists.txt
+
     - name: Configure CMake
       run: >
         cmake
