@@ -23,12 +23,13 @@ NORM  = 34.0
 
 # Title region (1300-space): painted flat navy, then ORIGINAL 'Inflator' glyphs
 # (recolored to one uniform color) + the Arc logo aligned to the title's vcenter.
-TITLE_BOX  = (8, 10, 410, 100)          # area painted flat navy
+TITLE_BOX  = (8, 10, 410, 100)          # glyph reference box (no longer painted)
+TOP_H      = 107                         # rows 0..TOP_H-1 = title strip -> transparent (starfield)
 GLYPH_BOX  = (55, 22, 300, 92)          # where the original 'Inflator' letters live
 TITLE_VCENTER = 53                       # vertical center of the 'Inflator' text
 WORD_COLOR = (220, 232, 255)            # uniform bright lavender-white
 LOGO_H, LOGO_RIGHT_MARGIN, LOGO_VCENTER = 56, 34, 50   # top-RIGHT corner placement
-LOGO_COLOR = (96, 160, 238)             # accent blue
+LOGO_COLOR = WORD_COLOR                 # match the 'Inflator' wordmark (lavender-white)
 
 arr = np.asarray(Image.open(SRC).convert('RGB')).astype(np.float32)
 L = 0.299*arr[..., 0] + 0.587*arr[..., 1] + 0.114*arr[..., 2]
@@ -44,7 +45,7 @@ _darkin = np.asarray(Image.fromarray(((local < 95) * 255).astype(np.uint8))
                      .filter(ImageFilter.MinFilter(9))) > 127
 lite = np.where(_darkin, np.clip(L - local - EDGE, 0, None), 0)
 text = np.clip(np.maximum(ink, lite) / NORM, 0, 1)
-text[TITLE_BOX[1]:TITLE_BOX[3], TITLE_BOX[0]:TITLE_BOX[2]] = 0   # suppress glow in title box
+text[0:TOP_H, :] = 0   # no glow in the title strip (it becomes transparent; starfield behind)
 
 # Suppress glow on structural bevels (not text): the meter-panel frame band + the gain-box wells.
 ML, MT, MR, MB = 421, 163, 878, 697
@@ -54,6 +55,9 @@ inner = (xx >= ML+15) & (xx <= MR-15) & (yy >= MT+15) & (yy <= MB-15)
 text[outer & ~inner] = 0                                         # meter-panel frame perimeter
 for gx in (94, 1107):                                            # gain-box wells (covered by CTextEdit)
     text[204:282, gx-14:gx+114] = 0
+for ax0, ay0, ax1, ay1 in ((78, 687, 103, 712), (184, 687, 209, 712),       # IN fader nudge arrows
+                           (1090, 407, 1115, 432), (1196, 407, 1221, 432)):  # OUT fader nudge arrows
+    text[ay0:ay1, ax0:ax1] = 0                                   # remove the baked decorative arrows
 
 Ln = L[..., None]
 base = np.where(Ln <= 128, NAVY*(Ln/128.0), NAVY + (WHITE-NAVY)*((Ln-128)/127.0))
@@ -66,6 +70,16 @@ out = base + HALO[None, None, :]*glow[..., None]*GLOW_GAIN
 out = out*(1-text[..., None]) + CORE[None, None, :]*text[..., None]
 out = np.clip(out, 0, 255).astype(np.uint8)
 
+# Erase the baked decorative fader nudge-arrows: fill each box by interpolating vertically
+# between the clean panel rows just above and below -> arrow gone, gradient stays continuous.
+for ax0, ay0, ax1, ay1 in ((77, 687, 104, 712), (183, 687, 210, 712),
+                           (1089, 407, 1116, 432), (1195, 407, 1222, 432)):
+    h = ay1 - ay0
+    top = out[ay0 - 1, ax0:ax1].astype(np.float32)
+    bot = out[ay1,     ax0:ax1].astype(np.float32)
+    t = (np.arange(1, h + 1) / (h + 1)).astype(np.float32)[:, None, None]
+    out[ay0:ay1, ax0:ax1] = (top[None] * (1 - t) + bot[None] * t).astype(np.uint8)
+
 # Meter window (OS:, scale numbers, IN/FX/OUT): render the text as ONE uniform color.
 # (Extract the original bright-on-dark text as alpha and flat-fill it — no glow unevenness,
 #  no grey midtones, no inter-letter blobs. Same approach as the title.)
@@ -75,8 +89,6 @@ win = NAVY[None, None, :]*(1 - malpha) + MWC[None, None, :]*malpha
 out[163:697, 421:878] = np.clip(win, 0, 255).astype(np.uint8)
 
 img = Image.fromarray(out, 'RGB').convert('RGBA')
-# flat navy over the whole title band (covers the messy embossed original)
-ImageDraw.Draw(img).rectangle(TITLE_BOX, fill=(int(NAVY[0]), int(NAVY[1]), int(NAVY[2]), 255))
 
 # ORIGINAL 'Inflator' letterforms -> uniform color (anti-aliased via luminance->alpha)
 src = np.asarray(Image.open(SRC).convert('RGB').crop(GLYPH_BOX)).astype(np.float32)
@@ -85,7 +97,7 @@ ga = np.clip((Lg - 65) / 95.0, 0, 1)                 # band(46)->0, light letter
 glyph = np.zeros((ga.shape[0], ga.shape[1], 4), np.uint8)
 glyph[..., 0], glyph[..., 1], glyph[..., 2] = WORD_COLOR
 glyph[..., 3] = (ga*255).astype(np.uint8)
-img.alpha_composite(Image.fromarray(glyph, 'RGBA'), (GLYPH_BOX[0], GLYPH_BOX[1]))
+glyph_img = Image.fromarray(glyph, 'RGBA')   # composited onto res AFTER the strip is keyed transparent
 
 # Arc ring logo: render SVG, crop content, recolor, vcenter-align to the title
 png = cairosvg.svg2png(url=LOGO_SVG, output_width=1024, output_height=1024)
@@ -100,11 +112,13 @@ logo_img = Image.fromarray(col.astype(np.uint8), 'RGBA')   # composited at top-r
 # alpha: void keying (keep title band opaque)
 chroma = arr.max(2) - arr.min(2)
 void = (L < 52) & (chroma < 18) & (text < 0.05) & (glow < 0.05)
-void[TITLE_BOX[1]:TITLE_BOX[3], TITLE_BOX[0]:TITLE_BOX[2]] = False
+void[0:TOP_H, :] = True            # entire title strip transparent -> starfield behind title + logo
+# meter (OS) display background is left transparent too -> starfield shows behind the meters + labels
 alpha = np.asarray(img)[..., 3].copy()
 alpha[void] = 0
 res = Image.fromarray(np.dstack([np.asarray(img)[..., :3], alpha]), 'RGBA')
-# Arc logo in the TOP-RIGHT corner, composited last so the starfield key can't erase it
+# 'Inflator' wordmark + Arc logo composited last, over the now-transparent strip (starfield behind)
+res.alpha_composite(glyph_img, (GLYPH_BOX[0], GLYPH_BOX[1]))
 res.alpha_composite(logo_img, (res.width - LOGO_RIGHT_MARGIN - logo_img.width,
                                LOGO_VCENTER - LOGO_H//2))
 res.save(OUT)

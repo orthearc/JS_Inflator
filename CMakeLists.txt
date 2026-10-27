@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.14.0)
-set(CMAKE_OSX_DEPLOYMENT_TARGET 10.11 CACHE STRING "")
+set(CMAKE_OSX_DEPLOYMENT_TARGET 10.13 CACHE STRING "")
 
 if(SMTG_MAC)
     set(vst3sdk_SOURCE_DIR "/Users/yoon/VST_SDK/vst3sdk")
@@ -14,6 +14,15 @@ endif()
 if(NOT vst3sdk_SOURCE_DIR)
     message(FATAL_ERROR "Path to VST3 SDK is empty!")
 endif()
+
+# Windows: statically link the MSVC runtime (/MT). DAW processes are DLL soup —
+# Kontakt 7 ships msvcp140.dll 14.32 (2022) in its plugin folder; once FL loads
+# it, any /MD plugin built with a newer toolset binds to that stale DLL and
+# crashes with an AV inside msvcp140.dll (confirmed via Event Log on FL 25
+# project load, 2026-07-16 — crashed FL a few seconds after loading a saved
+# project). The VST3 SDK honors SMTG_USE_STATIC_CRT in
+# smtg_setup_platform_toolset; force it ON before add_subdirectory(vst3sdk).
+set(SMTG_USE_STATIC_CRT ON CACHE BOOL "use static CRuntime on Windows (option /MT)" FORCE)
 
 project(JS_Inflator
     # This is your plug-in version number. Change it here only.
@@ -42,6 +51,10 @@ smtg_add_vst3plugin(JS_Inflator
 )
 set_target_properties(JS_Inflator PROPERTIES OUTPUT_NAME "Arc Inflator")
 
+# Build config matches the original JS_Inflator (SDK default Release: /O2 /Ob2, baseline x64/SSE2).
+# Measured: MSVC's /arch:AVX2 codegen does NOT reliably help these scalar-double FIR/shaper loops
+# (regressed ~4-19% at 16x/32x in the offline bench), so it is intentionally left off.
+
 #- VSTGUI Wanted ----
 if(SMTG_ENABLE_VSTGUI_SUPPORT)
     target_sources(JS_Inflator
@@ -54,23 +67,11 @@ if(SMTG_ENABLE_VSTGUI_SUPPORT)
     )
     smtg_target_add_plugin_resources(JS_Inflator
         RESOURCES
-            "resource/orig_background.png"
-            "resource/orig_button_onoff.png"
-            "resource/orig_handle.png"
-            "resource/orig_knob_green_.png"
-            "resource/orig_knob_red_.png"
-            "resource/orig_LED_cover.png"
-            "resource/orig_LED_ON.png"
-            "resource/orig_LED_OFF.png"
-            "resource/orig_LED_FX_ON.png"
-            "resource/orig_LED_FX_OFF.png"
-    )
-    smtg_target_add_plugin_resources(JS_Inflator
-        RESOURCES
             "resource/twarch/twarch_background.png"
             "resource/twarch/twarch_btn_CLIP.png"
             "resource/twarch/twarch_btn_IN.png"
             "resource/twarch/twarch_btn_SPLIT.png"
+            "resource/twarch/twarch_btn_LINK.png"
             "resource/twarch/twarch_handle.png"
             "resource/twarch/twarch_knob_red_.png"
             "resource/twarch/twarch_knob_yellow_.png"
@@ -141,13 +142,14 @@ if(SMTG_WIN)
     endif(NOT MINGW)
 endif(SMTG_WIN)
 
-# Add an AUv2 target
-if (SMTG_MAC AND XCODE AND SMTG_COREAUDIO_SDK_PATH)
+# Add an AUv2 target. Needs the Xcode generator, SMTG_ENABLE_AUV2_BUILDS=ON and either the
+# legacy CoreAudio SDK or Apple's AudioUnitSDK (github.com/apple/AudioUnitSDK, used by CI).
+if (SMTG_MAC AND XCODE AND SMTG_ENABLE_AUV2_BUILDS AND (SMTG_COREAUDIO_SDK_PATH OR SMTG_AUDIOUNIT_SDK_PATH))
     list(APPEND CMAKE_MODULE_PATH "${vst3sdk_SOURCE_DIR}/cmake/modules")
     include(SMTG_AddVST3AuV2) 
 	smtg_target_add_auv2(JS_Inflator-au
-		BUNDLE_NAME JS_Inflator
-		BUNDLE_IDENTIFIER io.github.yg331.JS.Inflator.audiounit
+		BUNDLE_NAME ArcInflator
+		BUNDLE_IDENTIFIER com.thearc.arcinflator.audiounit
 		INFO_PLIST_TEMPLATE resource/au-info.plist
 		VST3_PLUGIN_TARGET JS_Inflator)
-endif(SMTG_MAC AND XCODE AND SMTG_COREAUDIO_SDK_PATH)
+endif()

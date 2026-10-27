@@ -82,6 +82,7 @@ typedef struct _Flt {
     int TAP_HALF_HALF = 0;
     int TAP_CONDITION = 0;
 	int START = 0;
+	int pos = maxTap / 2;   // compaction cursor: newest sample sits at buff[pos] (up) / buff[pos+2] (dn)
 } Flt;
 
 class Decibels
@@ -278,6 +279,51 @@ protected:
 	void latencyBypass(SampleType** inputs, SampleType** outputs, int32 numChannels, SampleRate getSampleRate, int32 sampleFrames);
 
 	Sample64 process_inflator(Sample64 inputSample);
+	Sample64 process_inflator_adaa2(Sample64 inputSample, ADAA2& st);
+	Sample64 process_inflator_adaa1(Sample64 inputSample, ADAA2& st);
+
+	// Antiderivatives of the inflator waveshaper, used by ADAA. The shaper is odd
+	// (f(x)=sign(x)*g(|x|)), so F1 is even and F2 is odd. Continuity constants
+	// (adBm/adCp/adK1/adCinf/adK2/adK3) are recomputed whenever the curve changes.
+	inline Sample64 inflator_F1(Sample64 x) const {        // 1st antiderivative (even), F1(0)=0
+		Sample64 a = fabs(x), a2 = a*a, a3 = a2*a, a4 = a2*a2, a5 = a4*a;
+		if      (a <= 1.0) return curveA*a2*0.5 + adBm*a3/3.0 + adCp*a4*0.25 - curveD*a5*0.2;
+		else if (a <  2.0) return a2 - a3/3.0 + adK1;
+		else               return adCinf;
+	}
+	inline Sample64 inflator_F2(Sample64 x) const {        // 2nd antiderivative (odd)
+		Sample64 s = (x >= 0.0) ? 1.0 : -1.0, a = fabs(x);
+		Sample64 a2 = a*a, a3 = a2*a, a4 = a2*a2, a5 = a4*a, a6 = a4*a2, v;
+		if      (a <= 1.0) v = curveA*a3/6.0 + adBm*a4/12.0 + adCp*a5*0.05 - curveD*a6/30.0;
+		else if (a <  2.0) v = a3/3.0 - a4/12.0 + adK1*a + adK2;
+		else               v = adCinf*a + adK3;
+		return s*v;
+	}
+
+	// Recompute the curve coefficients + ADAA continuity constants from a curvepct value.
+	inline void updateCurveCoeffs(Sample64 cp) {
+		curvepct = cp;
+		curveA = 1.5 + cp;
+		curveB = -(cp + cp);
+		curveC = cp - 0.5;
+		curveD = 0.0625 - cp*0.25 + (cp*cp)*0.25;
+		adBm = curveB - curveD;
+		adCp = curveC + 2.0*curveD;
+		Sample64 F1_1 = curveA*0.5 + adBm/3.0 + adCp*0.25 - curveD*0.2;
+		adK1 = F1_1 - (2.0/3.0);
+		adCinf = (4.0/3.0) + adK1;
+		Sample64 F2_1 = curveA/6.0 + adBm/12.0 + adCp*0.05 - curveD/30.0;
+		adK2 = F2_1 - 0.25 - adK1;
+		adK3 = adK2 - (4.0/3.0);
+	}
+	// Refresh one shaper's cached antiderivative state with the CURRENT coefficients, so the
+	// ADAA divided differences stay consistent when the curve changes (else: spikes/clicks).
+	inline void adaaRecache(ADAA2& s) const {
+		s.ad2x1 = inflator_F2(s.x1);
+		Sample64 dd = s.x1 - s.x2;
+		if (fabs(dd) > 1.0e-5) s.d2 = (inflator_F2(s.x1) - inflator_F2(s.x2)) / dd;
+		else                   s.d2 = inflator_F1(0.5*(s.x1 + s.x2));
+	}
 
 	inline void Band_Split_set(Band_Split* filter, ParamValue Fc_L, ParamValue Fc_H, SampleRate Fs) {
 		(*filter).SR = Fs;
@@ -306,6 +352,7 @@ protected:
 	bool            bIn;
 	bool            bClip;
 	bool            bSplit;
+	int32           adaaOrder;   // ADAA: 0=Off, 1=1st-order, 2=2nd-order
 
 	// Internal values --------------------------------------------------------------
 	Sample64   curvepct;
@@ -313,6 +360,17 @@ protected:
 	Sample64   curveB;
 	Sample64   curveC;
 	Sample64   curveD;
+	// ADAA antiderivative continuity constants (recomputed with the curve coefficients)
+	Sample64   adBm = 0.0, adCp = 0.0, adK1 = 0.0, adCinf = 0.0, adK2 = 0.0, adK3 = 0.0;
+	// 2nd-order ADAA state: one per channel for the full-band path + the three split bands
+	std::vector<ADAA2> adaaFull, adaaL, adaaM, adaaH;
+
+	// Per-block parameter smoothing (one-pole) -> no zipper / spurious THD on knob moves,
+	// and keeps the ADAA consistent as the curve coefficients change.
+	Sample64 smInGain = 0.0, smOutGain = 0.0, smEffect = 0.0, smCurvepct = 0.0;
+	bool     smInit = false;
+	Sample64 adaaCachedCurve = -1.0e9;          // curvepct the ADAA caches reflect (static path)
+	std::vector<double> smInArr, smOutArr, smEffArr, smCurveArr;
 	std::vector<Band_Split> Band_Split;
 	overSample fParamOS;
 	overSample fParamOSOffline;
@@ -366,12 +424,12 @@ protected:
 	static SMTG_CONSTEXPR int32 dnTap_82 = 33;
 	static SMTG_CONSTEXPR int32 dnTap_83 = 21;
 
-	// Generic half-band cascade for x16/x32/x64 (6 stages: indices 0..5)
-	static SMTG_CONSTEXPR int32 kMaxStages = 6;
+	// Generic half-band cascade for x16..x256 (8 stages: indices 0..7)
+	static SMTG_CONSTEXPR int32 kMaxStages = 8;
 	std::vector<Flt> upStage[kMaxStages];   // [stage][channel]
 	std::vector<Flt> dnStage[kMaxStages];
-	static SMTG_CONSTEXPR int32 upStageTap[kMaxStages] = { 87, 33, 21, 17, 15, 13 };
-	static SMTG_CONSTEXPR int32 dnStageTap[kMaxStages] = { 113, 33, 21, 17, 15, 13 };
+	static SMTG_CONSTEXPR int32 upStageTap[kMaxStages] = { 87, 33, 21, 17, 15, 13, 11, 9 };
+	static SMTG_CONSTEXPR int32 dnStageTap[kMaxStages] = { 113, 33, 21, 17, 15, 13, 11, 9 };
 	// Min-phase FIR latencies for the new factors.
 	// Extrapolated from the analytic half-band cascade group delay (sum of per-stage
 	// (TAP-1)/2 referred to base rate over up+down chains), which reproduces the existing
@@ -381,10 +439,12 @@ protected:
 	static SMTG_CONSTEXPR int32 latency_Fir_x16 = 61;
 	static SMTG_CONSTEXPR int32 latency_Fir_x32 = 61;
 	static SMTG_CONSTEXPR int32 latency_Fir_x64 = 62;
+	static SMTG_CONSTEXPR int32 latency_Fir_x128 = 62;
+	static SMTG_CONSTEXPR int32 latency_Fir_x256 = 63;
 	// Linear-phase (r8brain) resamplers for the new factors.
-	std::vector<r8b::CDSPResampler24*> upSample_16x_Lin, upSample_32x_Lin, upSample_64x_Lin;
-	std::vector<r8b::CDSPResampler24*> dnSample_16x_Lin, dnSample_32x_Lin, dnSample_64x_Lin;
-	int32 latency_r8b_x16 = 0, latency_r8b_x32 = 0, latency_r8b_x64 = 0;
+	std::vector<r8b::CDSPResampler24*> upSample_16x_Lin, upSample_32x_Lin, upSample_64x_Lin, upSample_128x_Lin, upSample_256x_Lin;
+	std::vector<r8b::CDSPResampler24*> dnSample_16x_Lin, dnSample_32x_Lin, dnSample_64x_Lin, dnSample_128x_Lin, dnSample_256x_Lin;
+	int32 latency_r8b_x16 = 0, latency_r8b_x32 = 0, latency_r8b_x64 = 0, latency_r8b_x128 = 0, latency_r8b_x256 = 0;
 
 	// latency_r8b_x2 = -1 + 2 * upSample_2x_Lin[0].getInLenBeforeOutPos(1) +1;
 	// latency_r8b_x4 = -1 + 2 * upSample_4x_Lin[0].getInLenBeforeOutPos(1);

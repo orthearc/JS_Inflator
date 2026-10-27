@@ -404,6 +404,14 @@ private:
 	typedef std::vector<Steinberg::Vst::EditorView*> EditorVector;
 	EditorVector editors;
 
+	// unity-gain fader link: guards against re-entry / state-load while mirroring faders,
+	// plus the last-seen fader values so the link is RELATIVE (moves the other fader by the
+	// same delta in the opposite direction from its current spot, not an absolute mirror).
+	bool linkBusy     = false;
+	bool stateLoading = false;
+	Steinberg::Vst::ParamValue linkPrevIn  = 0.5;
+	Steinberg::Vst::ParamValue linkPrevOut = 0.5;
+
 	// zoom title-value struct
 	struct ZoomFactor 
 	{

@@ -16,6 +16,7 @@
 #include "vstgui/plugin-bindings/vst3groupcontroller.h"
 #include "vstgui/vstgui_uidescription.h"
 #include "vstgui/uidescription/detail/uiviewcreatorattributes.h"
+#include "vstgui/lib/controls/cslider.h"
 
 using namespace Steinberg;
 
@@ -134,6 +135,47 @@ public:
 
 //create a static instance so that it registers itself with the view factory
 myVuMeterFactory __gmyVuMeterFactory;
+
+//------------------------------------------------------------------------
+// CArcSlider : a CSlider that resets to its default value on double-click.
+//------------------------------------------------------------------------
+class CArcSlider : public CSlider
+{
+public:
+    using CSlider::CSlider;
+    CArcSlider(const CArcSlider& s) : CSlider(s) {}
+
+    CMouseEventResult onMouseDown(CPoint& where, const CButtonState& buttons) SMTG_OVERRIDE
+    {
+        if (buttons.isDoubleClick())
+        {
+            beginEdit();
+            setValue(getDefaultValue());
+            valueChanged();
+            endEdit();
+            invalid();
+            return kMouseEventHandled;
+        }
+        return CSlider::onMouseDown(where, buttons);
+    }
+
+    CLASS_METHODS(CArcSlider, CSlider)
+};
+
+//------------------------------------------------------------------------
+class ArcSliderFactory : public ViewCreatorAdapter
+{
+public:
+    ArcSliderFactory() { UIViewFactory::registerViewCreator(*this); }
+    IdStringPtr getViewName() const SMTG_OVERRIDE { return "CArcSlider"; }
+    IdStringPtr getBaseViewName() const SMTG_OVERRIDE { return "CSlider"; }
+    UTF8StringPtr getDisplayName() const SMTG_OVERRIDE { return "Arc Slider"; }
+    CView* create(const UIAttributes& /*attributes*/, const IUIDescription* /*description*/) const SMTG_OVERRIDE
+    {
+        return new CArcSlider(CRect(0, 0, 40, 200), nullptr, -1, 0, 0, nullptr, nullptr);
+    }
+};
+ArcSliderFactory __gArcSliderFactory;
 
 Steinberg::tresult PLUGIN_API GUIEditor::canResize()
 {
@@ -343,6 +385,8 @@ tresult PLUGIN_API JSIF_Controller::initialize(FUnknown* context)
     OS->appendString(STR("x16"));
     OS->appendString(STR("x32"));
     OS->appendString(STR("x64"));
+    OS->appendString(STR("x128"));
+    OS->appendString(STR("x256"));
     OS->setNormalized(OS->toNormalized(0));
     parameters.addParameter(OS);
 
@@ -354,6 +398,8 @@ tresult PLUGIN_API JSIF_Controller::initialize(FUnknown* context)
     OSOff->appendString(STR("x16"));
     OSOff->appendString(STR("x32"));
     OSOff->appendString(STR("x64"));
+    OSOff->appendString(STR("x128"));
+    OSOff->appendString(STR("x256"));
     OSOff->setNormalized(OSOff->toNormalized(static_cast<int>(init_OSOffline)));
     parameters.addParameter(OSOff);
 
@@ -382,6 +428,19 @@ tresult PLUGIN_API JSIF_Controller::initialize(FUnknown* context)
     flags        = Vst::ParameterInfo::kIsBypass;
     parameters.addParameter(STR16("Bypass"), nullptr, stepCount, defaultVal, flags, tag);
 
+    Vst::StringListParameter* ADAA = new Vst::StringListParameter(STR("ADAA"), kParamADAA);
+    ADAA->appendString(STR("Off"));
+    ADAA->appendString(STR("1st"));
+    ADAA->appendString(STR("2nd"));
+    ADAA->setNormalized(ADAA->toNormalized(init_ADAA_order));
+    parameters.addParameter(ADAA);
+
+    tag          = kParamLink;
+    stepCount    = 1;
+    defaultVal   = init_Link ? 1 : 0;
+    flags        = Vst::ParameterInfo::kCanAutomate | Vst::ParameterInfo::kIsList;
+    parameters.addParameter(STR16("Link"), nullptr, stepCount, defaultVal, flags, tag);
+
 	// GUI only parameter
 	if (zoomFactors.empty())
 	{
@@ -403,13 +462,6 @@ tresult PLUGIN_API JSIF_Controller::initialize(FUnknown* context)
 	zoomParameter->addDependent(this);
 	uiParameters.addParameter(zoomParameter);
 
-	Vst::StringListParameter* GuiSwitch = new Vst::StringListParameter(STR("GUI Switch"), kGuiSwitch);
-	GuiSwitch->appendString(STR("Original"));
-	GuiSwitch->appendString(STR("Twarch"));
-	GuiSwitch->setNormalized(GuiSwitch->toNormalized(1));
-	GuiSwitch->addDependent(this);
-	uiParameters.addParameter(GuiSwitch);
-
 	return result;
 }
 
@@ -418,7 +470,6 @@ tresult PLUGIN_API JSIF_Controller::terminate()
 {
 	// Here the Plug-in will be de-instantiated, last possibility to remove some memory!
 	getParameterObject(kParamZoom)->removeDependent(this);
-	getParameterObject(kGuiSwitch)->removeDependent(this);
 	//---do not forget to call parent ------
 	return EditControllerEx1::terminate();
 }
@@ -432,6 +483,7 @@ tresult PLUGIN_API JSIF_Controller::setComponentState(IBStream* state)
 	if (!state)
 		return kResultFalse;
 
+	stateLoading = true;   // suppress unity-link mirroring while restoring saved values
 	IBStreamer streamer(state, kLittleEndian);
 
 	Vst::ParamValue savedInput  = 0.0;
@@ -462,6 +514,10 @@ tresult PLUGIN_API JSIF_Controller::setComponentState(IBStream* state)
 	                             static_cast<Vst::ParamValue>(overSample_num);
 	streamer.readDouble(savedOSOff);   // tolerant: old states lack this field; keep default on short read
 
+	int32 savedADAA = init_ADAA_order;
+	streamer.readInt32(savedADAA);     // tolerant: old states lack this field
+	if (savedADAA < 0) savedADAA = 0; else if (savedADAA > 2) savedADAA = 2;
+
 	setParamNormalized(kParamInput,  savedInput);
 	setParamNormalized(kParamEffect, savedEffect);
 	setParamNormalized(kParamCurve,  savedCurve);
@@ -474,6 +530,7 @@ tresult PLUGIN_API JSIF_Controller::setComponentState(IBStream* state)
 	setParamNormalized(kParamPhase,  savedPhase);
 	setParamNormalized(kParamBypass, savedBypass ? 1 : 0);
 	setParamNormalized(kParamOSOffline, savedOSOff);
+	setParamNormalized(kParamADAA,   savedADAA * 0.5);   // 0/1/2 -> 0/0.5/1
 
     stateInput  = savedInput;
     stateEffect = savedEffect;
@@ -487,6 +544,7 @@ tresult PLUGIN_API JSIF_Controller::setComponentState(IBStream* state)
     statePhase  = savedPhase;
     stateBypass = savedBypass;
 
+	stateLoading = false;
 	return kResultOk;
 }
 
@@ -503,6 +561,7 @@ tresult PLUGIN_API JSIF_Controller::setState(IBStream* state)
     if (!state)
         return kResultFalse;
 
+    stateLoading = true;   // suppress unity-link mirroring while restoring saved values
     IBStreamer streamer(state, kLittleEndian);
 
     Vst::ParamValue savedInput  = 0.0;
@@ -533,6 +592,9 @@ tresult PLUGIN_API JSIF_Controller::setState(IBStream* state)
     if (streamer.readDouble(savedGUI)    == false) savedGUI    = 1.0;
     if (streamer.readDouble(savedOSOffline) == false) savedOSOffline = static_cast<Vst::ParamValue>(init_OSOffline) /
                                                                        static_cast<Vst::ParamValue>(overSample_num);
+    int32 savedADAA = init_ADAA_order;  streamer.readInt32(savedADAA);   // tolerant
+    if (savedADAA < 0) savedADAA = 0; else if (savedADAA > 2) savedADAA = 2;
+    int32 savedLink = init_Link ? 1 : 0;  streamer.readInt32(savedLink);   // tolerant
     //if (streamer.readInt32 (savedBypass) == false) return kResultFalse;
 
     setParamNormalized(kParamInput,  savedInput);
@@ -545,8 +607,9 @@ tresult PLUGIN_API JSIF_Controller::setState(IBStream* state)
     setParamNormalized(kParamSplit,  savedSplit  ? 1 : 0);
     setParamNormalized(kParamZoom,   savedZoom);
     setParamNormalized(kParamPhase,  savedPhase);
-    setParamNormalized(kGuiSwitch,   savedGUI);
     setParamNormalized(kParamOSOffline, savedOSOffline);
+    setParamNormalized(kParamADAA,   savedADAA * 0.5);   // 0/1/2 -> 0/0.5/1
+    setParamNormalized(kParamLink,   savedLink ? 1 : 0);
     //setParamNormalized(kParamBypass, savedBypass ? 1 : 0);
 
     stateInput  = savedInput;
@@ -563,6 +626,7 @@ tresult PLUGIN_API JSIF_Controller::setState(IBStream* state)
     stateOSOffline = savedOSOffline;
     //stateBypass = savedBypass;
 
+    stateLoading = false;
     return kResultTrue;
 }
 
@@ -585,7 +649,7 @@ tresult PLUGIN_API JSIF_Controller::getState(IBStream* state)
     stateSplit  = getParamNormalized (kParamSplit);
     stateZoom   = getParamNormalized (kParamZoom);
     statePhase  = getParamNormalized (kParamPhase);
-	stateGUI    = getParamNormalized (kGuiSwitch);
+	stateGUI    = 1.0;   // GuiSwitch removed; stream slot kept for state compatibility
     stateOSOffline = getParamNormalized (kParamOSOffline);
 
     streamer.writeDouble(stateInput);
@@ -600,6 +664,8 @@ tresult PLUGIN_API JSIF_Controller::getState(IBStream* state)
     streamer.writeDouble(statePhase);
     streamer.writeDouble(stateGUI);
     streamer.writeDouble(stateOSOffline);
+    streamer.writeInt32((int32)(getParamNormalized(kParamADAA) * 2.0 + 0.5));   // 0/0.5/1 -> 0/1/2
+    streamer.writeInt32(getParamNormalized(kParamLink) > 0.5 ? 1 : 0);
     //streamer.writeInt32(stateBypass ? 1 : 0);
 
 	return kResultTrue;
@@ -612,12 +678,9 @@ IPlugView* PLUGIN_API JSIF_Controller::createView(FIDString name)
 	if (FIDStringsEqual(name, Vst::ViewType::kEditor))
 	{
         VSTGUI::GUIEditor* view;
-		// create your editor here and return a IPlugView ptr of it
-		if (stateGUI == 0.0) 
-			view = new VSTGUI::GUIEditor(this, "Original", "JSIF_editor.uidesc");
-		else
-			view = new VSTGUI::GUIEditor(this, "Twarch", "JSIF_editor.uidesc");
-        view->setGuiState(stateGUI);
+		// Twarch is now the only skin (the Original skin + its selector were removed).
+		view = new VSTGUI::GUIEditor(this, "Twarch", "JSIF_editor.uidesc");
+        view->setGuiState(1.0);
         
         std::vector<double> _zoomFactors;
         _zoomFactors.push_back(0.50);
@@ -711,41 +774,12 @@ void PLUGIN_API JSIF_Controller::update(FUnknown* changedUnknown, int32 message)
 				editor->setZoomFactor(zoomFactors[index].factor);
 		}
 	}
-	if (param->getInfo().id == kGuiSwitch)
-	{
-        stateGUI = param->getNormalized();
-        for (EditorVector::const_iterator it = editors.begin(), end = editors.end(); it != end; ++it)
-        {
-            /*
-            // CPluginView
-            tresult PLUGIN_API canResize() SMTG_OVERRIDE
-                { return kResultFalse; }
-            tresult PLUGIN_API checkSizeConstraint(ViewRect* rect) SMTG_OVERRIDE
-                { return kResultFalse; }
-            */
-            VSTGUI::GUIEditor* editor = dynamic_cast<VSTGUI::GUIEditor*>(*it);
-            if (editor) {
-                if (editor->getGuiState() != stateGUI) {
-                    if      (stateGUI == 0.0) editor->exchangeView("Original");
-                    else if (stateGUI == 1.0) editor->exchangeView("Twarch");
-                    editor->setGuiState(stateGUI);
-                }
-            }
-        }
-	}
 }
 
 //------------------------------------------------------------------------
 void JSIF_Controller::editorAttached(Steinberg::Vst::EditorView* editor)
 {
     VSTGUI::GUIEditor* _editor = dynamic_cast<VSTGUI::GUIEditor*>(editor);
-    if (_editor) {
-        if (_editor->getGuiState() != stateGUI) {
-            if      (stateGUI == 0.0) _editor->exchangeView("Original");
-            else if (stateGUI == 1.0) _editor->exchangeView("Twarch");
-            _editor->setGuiState(stateGUI);
-        }
-    }
 	editors.push_back(_editor);
 }
 
@@ -760,6 +794,41 @@ tresult PLUGIN_API JSIF_Controller::setParamNormalized(Vst::ParamID tag, Vst::Pa
 {
 	// called by host to update your parameters
 	tresult result = EditControllerEx1::setParamNormalized(tag, value);
+
+	// Unity-gain link (RELATIVE): when one fader moves by delta, the other moves by -delta
+	// from ITS CURRENT position (it remembers where it is; no jump to an absolute mirror).
+	// Skipped during state load and guarded against re-entry / host ping-pong.
+	if (tag == kParamInput || tag == kParamOutput)
+	{
+		if (!linkBusy && !stateLoading && getParamNormalized(kParamLink) > 0.5)
+		{
+			const bool      isIn      = (tag == kParamInput);
+			Vst::ParamValue delta     = value - (isIn ? linkPrevIn : linkPrevOut);
+			Vst::ParamValue otherNew  = (isIn ? linkPrevOut : linkPrevIn) - delta;   // opposite direction
+			if (otherNew < 0.0) otherNew = 0.0;
+			if (otherNew > 1.0) otherNew = 1.0;
+
+			Vst::ParamID    other = isIn ? kParamOutput : kParamInput;
+			Vst::ParamValue diff  = getParamNormalized(other) - otherNew;
+			if (diff > 1.0e-9 || diff < -1.0e-9)                     // only if it actually changes
+			{
+				linkBusy = true;
+				EditControllerEx1::setParamNormalized(other, otherNew);   // controller cache + GUI
+				if (auto* handler = getComponentHandler()) {              // processor + host automation
+					handler->beginEdit(other);
+					handler->performEdit(other, otherNew);
+					handler->endEdit(other);
+				}
+				linkBusy = false;
+			}
+			if (isIn) { linkPrevIn = value; linkPrevOut = otherNew; }
+			else      { linkPrevOut = value; linkPrevIn  = otherNew; }
+		}
+		else   // keep the remembered positions in sync (link off, loading, or re-entrant)
+		{
+			if (tag == kParamInput) linkPrevIn = value; else linkPrevOut = value;
+		}
+	}
 	return result;
 }
 

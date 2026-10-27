@@ -31,7 +31,8 @@ enum {
     kParamIn,        // ByPass
     kParamBypass,
     kParamOSOffline,   // tag 16
-    kGuiSwitch = 1000
+    kParamADAA,        // tag 17  antiderivative antialiasing (2nd order) on/off
+    kParamLink         // tag 18  unity-gain fader link on/off
 };
 //------------------------------------------------------------------------
 } // namespace yg331

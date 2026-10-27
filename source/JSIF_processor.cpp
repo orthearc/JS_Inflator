@@ -29,6 +29,7 @@ namespace yg331 {
 		bIn(init_In),
 		bClip(init_Clip),
 		bSplit(init_Split),
+		adaaOrder(init_ADAA_order),
 		curvepct(init_curvepct),
 		curveA(init_curveA),
 		curveB(init_curveB),
@@ -110,11 +111,11 @@ namespace yg331 {
 		clear_delete(dnSample_82);
 		clear_delete(dnSample_83);
 
-		for (auto& v : { &upSample_16x_Lin,&upSample_32x_Lin,&upSample_64x_Lin,
-		                 &dnSample_16x_Lin,&dnSample_32x_Lin,&dnSample_64x_Lin })
+		for (auto& v : { &upSample_16x_Lin,&upSample_32x_Lin,&upSample_64x_Lin,&upSample_128x_Lin,&upSample_256x_Lin,
+		                 &dnSample_16x_Lin,&dnSample_32x_Lin,&dnSample_64x_Lin,&dnSample_128x_Lin,&dnSample_256x_Lin })
 			for (auto* p : *v) delete p;
-		clear_delete(upSample_16x_Lin); clear_delete(upSample_32x_Lin); clear_delete(upSample_64x_Lin);
-		clear_delete(dnSample_16x_Lin); clear_delete(dnSample_32x_Lin); clear_delete(dnSample_64x_Lin);
+		clear_delete(upSample_16x_Lin); clear_delete(upSample_32x_Lin); clear_delete(upSample_64x_Lin); clear_delete(upSample_128x_Lin); clear_delete(upSample_256x_Lin);
+		clear_delete(dnSample_16x_Lin); clear_delete(dnSample_32x_Lin); clear_delete(dnSample_64x_Lin); clear_delete(dnSample_128x_Lin); clear_delete(dnSample_256x_Lin);
 		for (int s = 0; s < kMaxStages; s++) { clear_delete(upStage[s]); clear_delete(dnStage[s]); }
 
 		//---do not forget to call parent ------
@@ -207,7 +208,19 @@ namespace yg331 {
 
 		Band_Split.resize(numChannels);
 		for (int32 channel = 0; channel < numChannels; channel++)
-			Band_Split_set(&Band_Split[channel], 240.0, 2400.0, newSetup.sampleRate);
+			Band_Split_set(&this->Band_Split[channel], 240.0, 2400.0, newSetup.sampleRate);
+
+		adaaFull.assign(numChannels, ADAA2());   // ADAA history, one per channel + per split band
+		adaaL.assign(numChannels, ADAA2());
+		adaaM.assign(numChannels, ADAA2());
+		adaaH.assign(numChannels, ADAA2());
+
+		const int32 maxBlock = newSetup.maxSamplesPerBlock > 0 ? newSetup.maxSamplesPerBlock : 4096;
+		smInArr.assign(maxBlock, 0.0);           // per-block smoothed parameter trajectories
+		smOutArr.assign(maxBlock, 0.0);
+		smEffArr.assign(maxBlock, 0.0);
+		smCurveArr.assign(maxBlock, 0.0);
+		smInit = false;                          // snap smoothers to target on the next block
 
 		upSample_21.resize(numChannels);
 		upSample_41.resize(numChannels);
@@ -233,8 +246,8 @@ namespace yg331 {
 		// ---- Generic min-phase cascade stages (x16/32/64) ----
 		for (int s = 0; s < kMaxStages; s++) { upStage[s].resize(numChannels); dnStage[s].resize(numChannels); }
 		// ---- Linear-phase r8brain for new factors ----
-		upSample_16x_Lin.resize(numChannels); upSample_32x_Lin.resize(numChannels); upSample_64x_Lin.resize(numChannels);
-		dnSample_16x_Lin.resize(numChannels); dnSample_32x_Lin.resize(numChannels); dnSample_64x_Lin.resize(numChannels);
+		upSample_16x_Lin.resize(numChannels); upSample_32x_Lin.resize(numChannels); upSample_64x_Lin.resize(numChannels); upSample_128x_Lin.resize(numChannels); upSample_256x_Lin.resize(numChannels);
+		dnSample_16x_Lin.resize(numChannels); dnSample_32x_Lin.resize(numChannels); dnSample_64x_Lin.resize(numChannels); dnSample_128x_Lin.resize(numChannels); dnSample_256x_Lin.resize(numChannels);
 
 		for (int channel = 0; channel < numChannels; channel++)
 		{
@@ -280,6 +293,7 @@ filter[channel].TAP_SIZE = tap_size; \
 filter[channel].TAP_HALF = tap_size / 2; \
 filter[channel].TAP_HALF_HALF = filter[channel].TAP_HALF / 2; \
 filter[channel].TAP_CONDITION = tap_size % 4; \
+filter[channel].pos = maxTap / 2; \
 if (filter[channel].TAP_CONDITION == 1) \
 { \
 	/* 0 == coef[0], coef[2], coef[4], coef[6], ... */ \
@@ -327,15 +341,21 @@ else if (filter[channel].TAP_CONDITION == 3) \
 			upSample_16x_Lin[channel] = new r8b::CDSPResampler24(1.0, 16.0, 1 * 16, 2.3);
 			upSample_32x_Lin[channel] = new r8b::CDSPResampler24(1.0, 32.0, 1 * 32, 2.4);
 			upSample_64x_Lin[channel] = new r8b::CDSPResampler24(1.0, 64.0, 1 * 64, 2.5);
+			upSample_128x_Lin[channel] = new r8b::CDSPResampler24(1.0, 128.0, 1 * 128, 2.6);
+			upSample_256x_Lin[channel] = new r8b::CDSPResampler24(1.0, 256.0, 1 * 256, 2.7);
 			dnSample_16x_Lin[channel] = new r8b::CDSPResampler24(16.0, 1.0, 1 * 16, 2.3);
 			dnSample_32x_Lin[channel] = new r8b::CDSPResampler24(32.0, 1.0, 1 * 32, 2.4);
 			dnSample_64x_Lin[channel] = new r8b::CDSPResampler24(64.0, 1.0, 1 * 64, 2.5);
+			dnSample_128x_Lin[channel] = new r8b::CDSPResampler24(128.0, 1.0, 1 * 128, 2.6);
+			dnSample_256x_Lin[channel] = new r8b::CDSPResampler24(256.0, 1.0, 1 * 256, 2.7);
 
 			if (channel == 0) {
 				// Exact linear-phase (r8brain) latencies (mirrors the commented formula at processor.h:366-368).
 				latency_r8b_x16 = -1 + 2 * (int32)upSample_16x_Lin[0]->getInLenBeforeOutPos(1);
 				latency_r8b_x32 = -1 + 2 * (int32)upSample_32x_Lin[0]->getInLenBeforeOutPos(1);
 				latency_r8b_x64 = -1 + 2 * (int32)upSample_64x_Lin[0]->getInLenBeforeOutPos(1);
+				latency_r8b_x128 = -1 + 2 * (int32)upSample_128x_Lin[0]->getInLenBeforeOutPos(1);
+				latency_r8b_x256 = -1 + 2 * (int32)upSample_256x_Lin[0]->getInLenBeforeOutPos(1);
 			}
 		}
 
@@ -368,30 +388,47 @@ else if (filter[channel].TAP_CONDITION == 3) \
 	{
         //FDebugPrint("[ FDebugPrint ] getLatencySamples\n");
 		overSample os = effectiveOS();
+		int32 lat = 0;
 		if (fParamPhase) {
-			if      (os == overSample_1x)  return 0;
-			else if (os == overSample_2x)  return latency_r8b_x2;
-			else if (os == overSample_4x)  return latency_r8b_x4;
-			else if (os == overSample_8x)  return latency_r8b_x8;
-			else if (os == overSample_16x) return latency_r8b_x16;
-			else if (os == overSample_32x) return latency_r8b_x32;
-			else                                 return latency_r8b_x64;
+			if      (os == overSample_1x)  lat = 0;
+			else if (os == overSample_2x)  lat = latency_r8b_x2;
+			else if (os == overSample_4x)  lat = latency_r8b_x4;
+			else if (os == overSample_8x)  lat = latency_r8b_x8;
+			else if (os == overSample_16x) lat = latency_r8b_x16;
+			else if (os == overSample_32x) lat = latency_r8b_x32;
+			else if (os == overSample_64x) lat = latency_r8b_x64;
+			else if (os == overSample_128x) lat = latency_r8b_x128;
+			else                                 lat = latency_r8b_x256;
 		}
 		else {
-			if      (os == overSample_1x)  return 0;
-			else if (os == overSample_2x)  return latency_Fir_x2;
-			else if (os == overSample_4x)  return latency_Fir_x4;
-			else if (os == overSample_8x)  return latency_Fir_x8;
-			else if (os == overSample_16x) return latency_Fir_x16;
-			else if (os == overSample_32x) return latency_Fir_x32;
-			else                                 return latency_Fir_x64;
+			if      (os == overSample_1x)  lat = 0;
+			else if (os == overSample_2x)  lat = latency_Fir_x2;
+			else if (os == overSample_4x)  lat = latency_Fir_x4;
+			else if (os == overSample_8x)  lat = latency_Fir_x8;
+			else if (os == overSample_16x) lat = latency_Fir_x16;
+			else if (os == overSample_32x) lat = latency_Fir_x32;
+			else if (os == overSample_64x) lat = latency_Fir_x64;
+			else if (os == overSample_128x) lat = latency_Fir_x128;
+			else                                 lat = latency_Fir_x256;
 		}
+		// 2nd-order ADAA adds 1 sample of group delay in the oversampled domain. At x1
+		// that is exactly 1 base-rate sample; at higher OS it is sub-sample (negligible).
+		// 1st-order ADAA has only a half-sample group delay -> reported as 0 (non-integer).
+		if (adaaOrder == 2 && os == overSample_1x) lat += 1;
+		return lat;
 	}
 
 	//------------------------------------------------------------------------
 	tresult PLUGIN_API JSIF_Processor::setActive(TBool state)
 	{
 		//--- called when the Plug-in is enable/disable (On/Off) -----
+		if (state) {                                   // clear ADAA history on (re)activation
+			for (auto& s : adaaFull) s = ADAA2();
+			for (auto& s : adaaL)    s = ADAA2();
+			for (auto& s : adaaM)    s = ADAA2();
+			for (auto& s : adaaH)    s = ADAA2();
+			smInit = false;                            // snap parameter smoothers on next block
+		}
 		return AudioEffect::setActive(state);
 	}
 
@@ -426,6 +463,10 @@ else if (filter[channel].TAP_CONDITION == 3) \
 						case kParamIn:     bIn         = (value > 0.5f); break;
 						case kParamZoom:   fParamZoom  = value;          break;
 						case kParamSplit:  bSplit      = (value > 0.5f); break;
+						case kParamADAA:
+						                   adaaOrder   = (int32)(value * 2.0 + 0.5);   // 0=Off,1=1st,2=2nd
+						                   sendTextMessage("OS\n");   // latency changes (2nd order x1: +1 sample)
+						                   break;
 						case kParamPhase:
 						                   fParamPhase = (value > 0.5f);
 						                   sendTextMessage("OS\n");
@@ -608,6 +649,10 @@ else if (filter[channel].TAP_CONDITION == 3) \
 		Vst::ParamValue savedOSOff = Steinberg::ToNormalized<ParamValue>(static_cast<ParamValue>(init_OSOffline), overSample_num);
 		streamer.readDouble(savedOSOff);   // tolerant: old states lack this field; keep default on short read
 
+		int32 savedADAA = init_ADAA_order;
+		streamer.readInt32(savedADAA);     // tolerant: old states lack this field
+		adaaOrder = (savedADAA < 0) ? 0 : (savedADAA > 2) ? 2 : savedADAA;
+
 		fInput     = savedInput;
 		fEffect    = savedEffect;
 		fCurve     = savedCurve;
@@ -665,6 +710,7 @@ else if (filter[channel].TAP_CONDITION == 3) \
 		streamer.writeDouble(fParamPhase);
 		streamer.writeInt32(bBypass ? 1 : 0);
 		streamer.writeDouble(Steinberg::ToNormalized<ParamValue> (static_cast<ParamValue>(fParamOSOffline), overSample_num));
+		streamer.writeInt32(adaaOrder);
 
 		return kResultOk;
 	}
@@ -742,6 +788,54 @@ else if (filter[channel].TAP_CONDITION == 3) \
 		return inputSample;
 	}
 
+	//------------------------------------------------------------------------
+	// Second-order antiderivative antialiasing of process_inflator (Parker/Zavalishin/
+	// Le Bivic 2016; Bilbao et al. 2017 divided-difference form). Exact for this
+	// piecewise-polynomial shaper. Nested fallbacks handle the near-coincident sample
+	// cases. State is per-instance (full-band or one split band, per channel).
+	//------------------------------------------------------------------------
+	Vst::Sample64 JSIF_Processor::process_inflator_adaa2(Vst::Sample64 x, ADAA2& s)
+	{
+		const Vst::Sample64 TOL = 1.0e-5;
+		const Vst::Sample64 ad2x = inflator_F2(x);                         // F2(x)
+		Vst::Sample64 d1;                                                  // divided diff of F2 over (x, x1)
+		if (fabs(x - s.x1) > TOL) d1 = (ad2x - s.ad2x1) / (x - s.x1);
+		else                      d1 = inflator_F1(0.5 * (x + s.x1));      // inner fallback
+		Vst::Sample64 y;
+		if (fabs(x - s.x2) > TOL) {
+			y = (2.0 / (x - s.x2)) * (d1 - s.d2);                         // outer well-conditioned
+		}
+		else {
+			const Vst::Sample64 xbar  = 0.5 * (x + s.x2);
+			const Vst::Sample64 delta = xbar - s.x1;
+			if (fabs(delta) > TOL)
+				y = (2.0 / delta) * (inflator_F1(xbar) + (s.ad2x1 - inflator_F2(xbar)) / delta);
+			else
+				y = process_inflator(0.5 * (xbar + s.x1));                // deepest fallback: f at midpoint
+		}
+		s.d2    = d1;                                                      // advance state
+		s.x2    = s.x1;
+		s.x1    = x;
+		s.ad2x1 = ad2x;
+		return y;
+	}
+
+	//------------------------------------------------------------------------
+	// First-order antiderivative antialiasing of process_inflator. Recomputes F1 on
+	// both endpoints with the CURRENT coefficients, so it stays consistent through
+	// curve moves with no cached state (no spikes) and has no in-band notch (its only
+	// transfer-function zero is at Nyquist). Cheaper than order 2 and zero latency.
+	//------------------------------------------------------------------------
+	Vst::Sample64 JSIF_Processor::process_inflator_adaa1(Vst::Sample64 x, ADAA2& s)
+	{
+		const Vst::Sample64 TOL = 1.0e-5;
+		Vst::Sample64 y;
+		if (fabs(x - s.x1) > TOL) y = (inflator_F1(x) - inflator_F1(s.x1)) / (x - s.x1);
+		else                      y = process_inflator(0.5 * (x + s.x1));   // L'Hopital midpoint
+		s.x1 = x;
+		return y;
+	}
+
 	template <typename SampleType>
 	void JSIF_Processor::latencyBypass(
 		SampleType** inputs,
@@ -760,6 +854,8 @@ else if (filter[channel].TAP_CONDITION == 3) \
 			else if (os == overSample_16x) latency = latency_Fir_x16;
 			else if (os == overSample_32x) latency = latency_Fir_x32;
 			else if (os == overSample_64x) latency = latency_Fir_x64;
+			else if (os == overSample_128x) latency = latency_Fir_x128;
+			else if (os == overSample_256x) latency = latency_Fir_x256;
 		}
 		else {
 			if      (os == overSample_2x)  latency = latency_r8b_x2;
@@ -768,6 +864,8 @@ else if (filter[channel].TAP_CONDITION == 3) \
 			else if (os == overSample_16x) latency = latency_r8b_x16;
 			else if (os == overSample_32x) latency = latency_r8b_x32;
 			else if (os == overSample_64x) latency = latency_r8b_x64;
+			else if (os == overSample_128x) latency = latency_r8b_x128;
+			else if (os == overSample_256x) latency = latency_r8b_x256;
 		}
 
 		for (int32 channel = 0; channel < numChannels; channel++)
@@ -822,14 +920,41 @@ else if (filter[channel].TAP_CONDITION == 3) \
 		int32 sampleFrames
 	)
 	{
-		Vst::Sample64 In_db  = expf(logf(10.f) * (24.0 * fInput  - 12.0) / 20.f);
-		Vst::Sample64 Out_db = expf(logf(10.f) * (24.0 * fOutput - 12.0) / 20.f);
+		// --- per-block parameter-smoothing setup ----------------------------------------------
+		// Input/Output gain, Effect mix and Curve are one-pole smoothed at the base rate so that
+		// moving the knobs introduces THD gradually (no zipper) and keeps ADAA consistent.
+		Vst::Sample64 targetIn  = expf(logf(10.f) * (24.0 * fInput  - 12.0) / 20.f);
+		Vst::Sample64 targetOut = expf(logf(10.f) * (24.0 * fOutput - 12.0) / 20.f);
+		Vst::Sample64 targetEff = fEffect;
+		Vst::Sample64 targetCp  = fCurve - 0.5;
 
-		curvepct = fCurve - 0.5;
-		curveA =        1.5 + curvepct; 
-		curveB = -(curvepct + curvepct); 
-		curveC =   curvepct - 0.5; 
-		curveD = 0.0625 - curvepct * 0.25 + (curvepct * curvepct) * 0.25;	
+		if (!smInit) {                                  // snap on (re)activation / first block
+			smInGain = targetIn; smOutGain = targetOut; smEffect = targetEff; smCurvepct = targetCp;
+			smInit = true;
+		}
+		const Vst::Sample64 smCoef = 1.0 - exp(-1.0 / (0.010 * SampleRate));   // ~10 ms one-pole
+		const Vst::Sample64 EPS = 1.0e-7;
+		bool smoothing = (fabs(targetIn  - smInGain ) > EPS) || (fabs(targetOut - smOutGain) > EPS) ||
+		                 (fabs(targetEff - smEffect ) > EPS) || (fabs(targetCp  - smCurvepct) > EPS);
+		if (smoothing) {                                // build per-sample trajectories (advance once/sample)
+			for (int32 i = 0; i < sampleFrames; i++) {
+				smInGain   += (targetIn   - smInGain ) * smCoef;  smInArr[i]    = smInGain;
+				smOutGain  += (targetOut  - smOutGain) * smCoef;  smOutArr[i]   = smOutGain;
+				smEffect   += (targetEff  - smEffect ) * smCoef;  smEffArr[i]   = smEffect;
+				smCurvepct += (targetCp   - smCurvepct) * smCoef; smCurveArr[i] = smCurvepct;
+			}
+		}
+		else {                                          // converged: snap, compute coefficients once
+			smInGain = targetIn; smOutGain = targetOut; smEffect = targetEff; smCurvepct = targetCp;
+			updateCurveCoeffs(smCurvepct);
+			if (adaaOrder == 2 && smCurvepct != adaaCachedCurve) {   // refresh order-2 caches on a discrete curve step
+				for (auto& s : adaaFull) adaaRecache(s);
+				for (auto& s : adaaL)    adaaRecache(s);
+				for (auto& s : adaaM)    adaaRecache(s);
+				for (auto& s : adaaH)    adaaRecache(s);
+				adaaCachedCurve = smCurvepct;
+			}
+		}
 
 		overSample os = effectiveOS();
 		int32 latency = 0;
@@ -840,6 +965,8 @@ else if (filter[channel].TAP_CONDITION == 3) \
 			else if (os == overSample_16x) latency = latency_Fir_x16;
 			else if (os == overSample_32x) latency = latency_Fir_x32;
 			else if (os == overSample_64x) latency = latency_Fir_x64;
+			else if (os == overSample_128x) latency = latency_Fir_x128;
+			else if (os == overSample_256x) latency = latency_Fir_x256;
 		}
 		else {
 			if      (os == overSample_2x)  latency = latency_r8b_x2;
@@ -848,6 +975,8 @@ else if (filter[channel].TAP_CONDITION == 3) \
 			else if (os == overSample_16x) latency = latency_r8b_x16;
 			else if (os == overSample_32x) latency = latency_r8b_x32;
 			else if (os == overSample_64x) latency = latency_r8b_x64;
+			else if (os == overSample_128x) latency = latency_r8b_x128;
+			else if (os == overSample_256x) latency = latency_r8b_x256;
 		}
 
 		int32 oversampling = 1;
@@ -857,15 +986,17 @@ else if (filter[channel].TAP_CONDITION == 3) \
 		else if (os == overSample_16x) oversampling = 16;
 		else if (os == overSample_32x) oversampling = 32;
 		else if (os == overSample_64x) oversampling = 64;
+		else if (os == overSample_128x) oversampling = 128;
+		else if (os == overSample_256x) oversampling = 256;
 
 		Vst::SampleRate targetSampleRate = SampleRate * oversampling;
-		
+
 		for (int32 channel = 0; channel < numChannels; channel++)
-			if (Band_Split[channel].SR != targetSampleRate) 
-				Band_Split_set(&Band_Split[channel], 240.0, 2400.0, targetSampleRate);
-        
-        double up_x[64] = {0.0, };
-        double up_y[64] = {0.0, };
+			if (this->Band_Split[channel].SR != targetSampleRate)
+				Band_Split_set(&this->Band_Split[channel], 240.0, 2400.0, targetSampleRate);
+
+        double up_x[256] = {0.0, };
+        double up_y[256] = {0.0, };
 
 		Meter = 0.0;
 		double t = 0.0;
@@ -887,12 +1018,16 @@ else if (filter[channel].TAP_CONDITION == 3) \
 			}
 
 			int32 samples = sampleFrames;
+			int32 n = 0;
 
-			while (--samples >= 0)
+			// Per-sample body, parameterized by the (possibly smoothed) gains. Defined once and
+			// invoked from two loops below, so the common static-knob path carries ZERO smoothing
+			// overhead (block-constant gains, no per-sample branch) while knob moves stay click-free.
+			auto processOneSample = [&](Vst::Sample64 gIn, Vst::Sample64 gOut, Vst::Sample64 mEff)
 			{
 				Vst::Sample64 inputSample = *ptrIn;
 
-				inputSample *= In_db;
+				inputSample *= gIn;
 
 				if (bClip) {
 					if      (inputSample >  1.0) inputSample =  1.0;
@@ -913,7 +1048,9 @@ else if (filter[channel].TAP_CONDITION == 3) \
 						else if (os == overSample_8x)  Fir_x8_up(&inputSample, up_x, channel);
 						else if (os == overSample_16x) Fir_up_n(&inputSample, up_x, channel, 4);
 						else if (os == overSample_32x) Fir_up_n(&inputSample, up_x, channel, 5);
-						else                                 Fir_up_n(&inputSample, up_x, channel, 6);
+						else if (os == overSample_64x) Fir_up_n(&inputSample, up_x, channel, 6);
+						else if (os == overSample_128x) Fir_up_n(&inputSample, up_x, channel, 7);
+						else                                 Fir_up_n(&inputSample, up_x, channel, 8);
 					}
 					else {
 						double* upSample_buff;
@@ -922,7 +1059,9 @@ else if (filter[channel].TAP_CONDITION == 3) \
 						else if (os == overSample_8x)  upSample_8x_Lin[channel]->process(&inputSample, 1, upSample_buff);
 						else if (os == overSample_16x) upSample_16x_Lin[channel]->process(&inputSample, 1, upSample_buff);
 						else if (os == overSample_32x) upSample_32x_Lin[channel]->process(&inputSample, 1, upSample_buff);
-						else                                 upSample_64x_Lin[channel]->process(&inputSample, 1, upSample_buff);
+						else if (os == overSample_64x) upSample_64x_Lin[channel]->process(&inputSample, 1, upSample_buff);
+						else if (os == overSample_128x) upSample_128x_Lin[channel]->process(&inputSample, 1, upSample_buff);
+						else                                 upSample_256x_Lin[channel]->process(&inputSample, 1, upSample_buff);
 						memcpy(up_x, upSample_buff, sizeof(Vst::Sample64) * oversampling);
 					}
 				}
@@ -935,23 +1074,36 @@ else if (filter[channel].TAP_CONDITION == 3) \
 					}
 					Vst::Sample64 sampleOS = up_x[k];
 					if (bSplit) {
-						Band_Split[channel].LP.R =      Band_Split[channel].LP.I  + Band_Split[channel].LP.C * (sampleOS - Band_Split[channel].LP.I);
-						Band_Split[channel].LP.I =  2 * Band_Split[channel].LP.R  - Band_Split[channel].LP.I;
+						this->Band_Split[channel].LP.R =      this->Band_Split[channel].LP.I  + this->Band_Split[channel].LP.C * (sampleOS - this->Band_Split[channel].LP.I);
+						this->Band_Split[channel].LP.I =  2 * this->Band_Split[channel].LP.R  - this->Band_Split[channel].LP.I;
 
-						Band_Split[channel].HP.R = (1 - Band_Split[channel].HP.C) * Band_Split[channel].HP.I + Band_Split[channel].HP.C * sampleOS;
-						Band_Split[channel].HP.I =  2 * Band_Split[channel].HP.R  - Band_Split[channel].HP.I;
+						this->Band_Split[channel].HP.R = (1 - this->Band_Split[channel].HP.C) * this->Band_Split[channel].HP.I + this->Band_Split[channel].HP.C * sampleOS;
+						this->Band_Split[channel].HP.I =  2 * this->Band_Split[channel].HP.R  - this->Band_Split[channel].HP.I;
 
-						Vst::Sample64 inputSample_L = Band_Split[channel].LP.R;
-						Vst::Sample64 inputSample_H = sampleOS - Band_Split[channel].HP.R;
-						Vst::Sample64 inputSample_M = Band_Split[channel].HP.R - Band_Split[channel].LP.R;
+						Vst::Sample64 inputSample_L = this->Band_Split[channel].LP.R;
+						Vst::Sample64 inputSample_H = sampleOS - this->Band_Split[channel].HP.R;
+						Vst::Sample64 inputSample_M = this->Band_Split[channel].HP.R - this->Band_Split[channel].LP.R;
 
-						up_y[k] = process_inflator(inputSample_L) +
-						          process_inflator(inputSample_M * Band_Split[channel].G) * Band_Split[channel].GR +
-						          process_inflator(inputSample_H);
+						if (adaaOrder == 2) {
+							up_y[k] = process_inflator_adaa2(inputSample_L, adaaL[channel]) +
+							          process_inflator_adaa2(inputSample_M * this->Band_Split[channel].G, adaaM[channel]) * this->Band_Split[channel].GR +
+							          process_inflator_adaa2(inputSample_H, adaaH[channel]);
+						}
+						else if (adaaOrder == 1) {
+							up_y[k] = process_inflator_adaa1(inputSample_L, adaaL[channel]) +
+							          process_inflator_adaa1(inputSample_M * this->Band_Split[channel].G, adaaM[channel]) * this->Band_Split[channel].GR +
+							          process_inflator_adaa1(inputSample_H, adaaH[channel]);
+						}
+						else {
+							up_y[k] = process_inflator(inputSample_L) +
+							          process_inflator(inputSample_M * this->Band_Split[channel].G) * this->Band_Split[channel].GR +
+							          process_inflator(inputSample_H);
+						}
 					}
 					else {
-						up_y[k] = process_inflator(sampleOS);
-						// up_y[k] = up_x[k];
+						up_y[k] = (adaaOrder == 2) ? process_inflator_adaa2(sampleOS, adaaFull[channel])
+						        : (adaaOrder == 1) ? process_inflator_adaa1(sampleOS, adaaFull[channel])
+						        :                    process_inflator(sampleOS);
 					}
 					if (bClip && up_y[k] >  1.0) up_y[k] =  1.0;
 					if (bClip && up_y[k] < -1.0) up_y[k] = -1.0;
@@ -966,7 +1118,9 @@ else if (filter[channel].TAP_CONDITION == 3) \
 						else if (os == overSample_8x)  Fir_x8_dn(up_y, &inputSample, channel);
 						else if (os == overSample_16x) Fir_dn_n(up_y, &inputSample, channel, 4);
 						else if (os == overSample_32x) Fir_dn_n(up_y, &inputSample, channel, 5);
-						else                                 Fir_dn_n(up_y, &inputSample, channel, 6);
+						else if (os == overSample_64x) Fir_dn_n(up_y, &inputSample, channel, 6);
+						else if (os == overSample_128x) Fir_dn_n(up_y, &inputSample, channel, 7);
+						else                                 Fir_dn_n(up_y, &inputSample, channel, 8);
 					}
 					else {
 						double* dnSample_buff;
@@ -975,7 +1129,9 @@ else if (filter[channel].TAP_CONDITION == 3) \
 						else if (os == overSample_8x)  dnSample_8x_Lin[channel]->process(up_y, oversampling, dnSample_buff);
 						else if (os == overSample_16x) dnSample_16x_Lin[channel]->process(up_y, oversampling, dnSample_buff);
 						else if (os == overSample_32x) dnSample_32x_Lin[channel]->process(up_y, oversampling, dnSample_buff);
-						else                                 dnSample_64x_Lin[channel]->process(up_y, oversampling, dnSample_buff);
+						else if (os == overSample_64x) dnSample_64x_Lin[channel]->process(up_y, oversampling, dnSample_buff);
+						else if (os == overSample_128x) dnSample_128x_Lin[channel]->process(up_y, oversampling, dnSample_buff);
+						else                                 dnSample_256x_Lin[channel]->process(up_y, oversampling, dnSample_buff);
 						inputSample = *dnSample_buff;
 					}
 				}
@@ -988,17 +1144,33 @@ else if (filter[channel].TAP_CONDITION == 3) \
 				latency_q[channel].pop_front();
 				*buff_in = delayed;  buff_in++;
                 
-				inputSample = (delayed * (1.0 - fEffect)) + (inputSample * fEffect);
-                
+				inputSample = (delayed * (1.0 - mEff)) + (inputSample * mEff);
+
 				t += std::abs(inputSample) - std::abs(delayed);
 				// Meter += 20.0 * (std::log10(std::abs(inputSample)) - std::log10(std::abs(delayed)));
 
-				inputSample *= Out_db;
+				inputSample *= gOut;
 
 				*ptrOut = (SampleType)inputSample;
 
 				ptrIn++;
 				ptrOut++;
+			};
+
+			if (!smoothing) {                          // static knobs: lean loop, block-constant gains
+				while (--samples >= 0)
+					[[msvc::forceinline]] processOneSample(smInGain, smOutGain, smEffect);
+			}
+			else {                                     // a knob is moving: per-sample smoothed coefficients
+				while (--samples >= 0) {
+					updateCurveCoeffs(smCurveArr[n]);
+					if (adaaOrder == 2) {              // only order-2 caches antiderivatives; order-1 recomputes
+						adaaRecache(adaaFull[channel]);
+						adaaRecache(adaaL[channel]); adaaRecache(adaaM[channel]); adaaRecache(adaaH[channel]);
+					}
+					[[msvc::forceinline]] processOneSample(smInArr[n], smOutArr[n], smEffArr[n]);
+					n++;
+				}
 			}
 		}
 		Meter = 80.0 - t;
@@ -1015,190 +1187,175 @@ else if (filter[channel].TAP_CONDITION == 3) \
 		return;
 	}
 
+	// Compaction delay-line push helpers. Instead of memmove-ing the whole delay line every
+	// sub-sample, we advance a read cursor (pos) downward and memmove ("compact") only when it
+	// nears the buffer start. HB_upsample/HB_dnsample read from buff+pos, so the data the
+	// convolution sees is bit-identical to the old per-sample-memmove scheme (verified offline
+	// to 0.0 difference over a full 16x/32x/64x cascade), at ~2x lower FIR cost.
+	static inline void hb_push_up(Flt& f, Vst::Sample64 x)
+	{
+		if (f.pos == 0) {                                  // no room below: lift the window to the top
+			int win = f.TAP_HALF + 1;
+			memmove(f.buff + (maxTap - win), f.buff + f.pos, sizeof(double) * win);
+			f.pos = maxTap - win;
+		}
+		f.pos--;
+		f.buff[f.pos] = x;
+	}
+	static inline void hb_push_dn(Flt& f, Vst::Sample64 in0, Vst::Sample64 in1)
+	{
+		if (f.pos < 2) {
+			int win = f.TAP_SIZE + 2;
+			memmove(f.buff + (maxTap - win), f.buff + f.pos, sizeof(double) * win);
+			f.pos = maxTap - win;
+		}
+		f.pos -= 2;
+		f.buff[f.pos + 1] = in1;
+		f.buff[f.pos + 2] = in0;
+		f.buff[f.pos + f.TAP_SIZE + 1] = 0.0;              // replicate the old code's never-written buff[TAP+1]
+	}
+
 	/// Fir Linear Oversamplers
 	void JSIF_Processor::HB_upsample(Flt* filter, Vst::Sample64* out)
 	{
 		// half-band
+		const double* b = filter->buff + filter->pos;
 		double acc = 0.0;
 		for (int coef = filter->START, buff = 0; coef < filter->TAP_HALF; coef += 2, buff++)
 		{
-			acc += filter->coef[coef] * (filter->buff[buff] + filter->buff[filter->TAP_HALF - buff - filter->START]);
+			acc += filter->coef[coef] * (b[buff] + b[filter->TAP_HALF - buff - filter->START]);
 		}
-		
+
 		double acc_1 = 0.0;
 		double acc_2 = 0.0;
 		if (filter->TAP_CONDITION == 1)
 		{
-			acc_1 = filter->coef[filter->TAP_HALF] * filter->buff[filter->TAP_HALF_HALF];
+			acc_1 = filter->coef[filter->TAP_HALF] * b[filter->TAP_HALF_HALF];
 			acc_2 = acc;
 		}
 		else // if (filter->TAP_CONDITION == 3)
 		{
 			acc_1 = acc;
-			acc_2 = filter->coef[filter->TAP_HALF] *  filter->buff[filter->TAP_HALF_HALF];
+			acc_2 = filter->coef[filter->TAP_HALF] *  b[filter->TAP_HALF_HALF];
 		}
-		
+
 		*(out  ) = acc_1;
 		*(out+1) = acc_2;
 	}
 	void JSIF_Processor::HB_dnsample(Flt* filter, Vst::Sample64* out)
 	{
 		// half-band
+		const double* b = filter->buff + filter->pos;
 		double acc = 0.0;
 		int TAP_SIZE_1 = filter->TAP_SIZE - 1;
 		for (int i = filter->START; i < filter->TAP_HALF; i+=2) // buffer + 2 is offset
 		{
-			acc += filter->coef[i] * (filter->buff[2 + i] + filter->buff[2 + TAP_SIZE_1 - i]);
+			acc += filter->coef[i] * (b[2 + i] + b[2 + TAP_SIZE_1 - i]);
 		}
-		acc += filter->coef[filter->TAP_HALF] * filter->buff[2 + filter->TAP_HALF];
+		acc += filter->coef[filter->TAP_HALF] * b[2 + filter->TAP_HALF];
 		*out = acc;
 	}
 	
 	// 1 in 2 out
-	void JSIF_Processor::Fir_x2_up(Vst::Sample64* in, Vst::Sample64* out, int32 channel) 
+	void JSIF_Processor::Fir_x2_up(Vst::Sample64* in, Vst::Sample64* out, int32 channel)
 	{
-		static constexpr size_t upTap_21_size = sizeof(double) * (upTap_21 - 1) / 2;
-		memmove(upSample_21[channel].buff + 1, upSample_21[channel].buff, upTap_21_size);
-		upSample_21[channel].buff[0] = *in;
+		hb_push_up(upSample_21[channel], *in);
 		HB_upsample(&upSample_21[channel], out);
-		
+
 		return;
 	}
 	// 1 in 4 out
 	void JSIF_Processor::Fir_x4_up(Vst::Sample64* in, Vst::Sample64* out, int32 channel)
 	{
 		Vst::Sample64 inter_41[2];
-		static constexpr size_t  upTap_41_size = sizeof(double) * (upTap_41 - 1) / 2;
-		memmove(upSample_41[channel].buff + 1, upSample_41[channel].buff, upTap_41_size);
-		upSample_41[channel].buff[0] = *in;
+		hb_push_up(upSample_41[channel], *in);
 		HB_upsample(&upSample_41[channel], &inter_41[0]);
-		
-		static constexpr size_t upTap_42_size = sizeof(double) * (upTap_42 - 1) / 2;
-		memmove(upSample_42[channel].buff + 1, upSample_42[channel].buff, upTap_42_size);
-		upSample_42[channel].buff[0] = inter_41[0];
+
+		hb_push_up(upSample_42[channel], inter_41[0]);
 		HB_upsample(&upSample_42[channel], &out[0]);
-		
-		memmove(upSample_42[channel].buff + 1, upSample_42[channel].buff, upTap_42_size);
-		upSample_42[channel].buff[0] = inter_41[1];
+
+		hb_push_up(upSample_42[channel], inter_41[1]);
 		HB_upsample(&upSample_42[channel], &out[2]);
-		
+
 		return;
 	}
 	// 1 in 8 out
 	void JSIF_Processor::Fir_x8_up(Vst::Sample64* in, Vst::Sample64* out, int32 channel)
 	{
 		Vst::Sample64 inter_81[2];
-		static constexpr size_t upTap_81_size = sizeof(double) * (upTap_81 - 1) / 2;
-		memmove(upSample_81[channel].buff + 1, upSample_81[channel].buff, upTap_81_size);
-		upSample_81[channel].buff[0] = *in;
+		hb_push_up(upSample_81[channel], *in);
 		HB_upsample(&upSample_81[channel], &inter_81[0]);
-		
+
 		Vst::Sample64 inter_82[4];
-		static constexpr size_t upTap_82_size = sizeof(double) * (upTap_82 - 1) / 2;
-		memmove(upSample_82[channel].buff + 1, upSample_82[channel].buff, upTap_82_size);
-		upSample_82[channel].buff[0] = inter_81[0];
+		hb_push_up(upSample_82[channel], inter_81[0]);
 		HB_upsample(&upSample_82[channel], &inter_82[0]);
-		
-		memmove(upSample_82[channel].buff + 1, upSample_82[channel].buff, upTap_82_size);
-		upSample_82[channel].buff[0] = inter_81[1];
+
+		hb_push_up(upSample_82[channel], inter_81[1]);
 		HB_upsample(&upSample_82[channel], &inter_82[2]);
-		
-		static constexpr size_t upTap_83_size = sizeof(double) * (upTap_83 - 1) / 2;
-		memmove(upSample_83[channel].buff + 1, upSample_83[channel].buff, upTap_83_size);
-		upSample_83[channel].buff[0] = inter_82[0];
+
+		hb_push_up(upSample_83[channel], inter_82[0]);
 		HB_upsample(&upSample_83[channel], &out[0]);
-		
-		memmove(upSample_83[channel].buff + 1, upSample_83[channel].buff, upTap_83_size);
-		upSample_83[channel].buff[0] = inter_82[1];
+
+		hb_push_up(upSample_83[channel], inter_82[1]);
 		HB_upsample(&upSample_83[channel], &out[2]);
-		
-		memmove(upSample_83[channel].buff + 1, upSample_83[channel].buff, upTap_83_size);
-		upSample_83[channel].buff[0] = inter_82[2];
+
+		hb_push_up(upSample_83[channel], inter_82[2]);
 		HB_upsample(&upSample_83[channel], &out[4]);
-		
-		memmove(upSample_83[channel].buff + 1, upSample_83[channel].buff, upTap_83_size);
-		upSample_83[channel].buff[0] = inter_82[3];
+
+		hb_push_up(upSample_83[channel], inter_82[3]);
 		HB_upsample(&upSample_83[channel], &out[6]);
-		
+
 		return;
 	}
 	
 	
 	// 2 in 1 out
-	void JSIF_Processor::Fir_x2_dn(Vst::Sample64* in, Vst::Sample64* out, int32 channel) 
+	void JSIF_Processor::Fir_x2_dn(Vst::Sample64* in, Vst::Sample64* out, int32 channel)
 	{
-		static constexpr size_t dnTap_21_size = sizeof(double) * (dnTap_21 - 2);
-		memmove(dnSample_21[channel].buff + 3, dnSample_21[channel].buff + 1, dnTap_21_size);
-		dnSample_21[channel].buff[2] = in[0];
-		dnSample_21[channel].buff[1] = in[1];
+		hb_push_dn(dnSample_21[channel], in[0], in[1]);
 		HB_dnsample(&dnSample_21[channel], out);
-		
+
 		return;
 	}
 	// 4 in 1 out
 	void JSIF_Processor::Fir_x4_dn(Vst::Sample64* in, Vst::Sample64* out, int32 channel)
 	{
 		Vst::Sample64 inter_42[2];
-		static constexpr size_t dnTap_42_size = sizeof(double) * (dnTap_42 - 2);
-		memmove(dnSample_42[channel].buff + 3, dnSample_42[channel].buff + 1, dnTap_42_size);
-		dnSample_42[channel].buff[2] = in[0];
-		dnSample_42[channel].buff[1] = in[1];
+		hb_push_dn(dnSample_42[channel], in[0], in[1]);
 		HB_dnsample(&dnSample_42[channel], &inter_42[0]);
-		
-		memmove(dnSample_42[channel].buff + 3, dnSample_42[channel].buff + 1, dnTap_42_size);
-		dnSample_42[channel].buff[2] = in[2];
-		dnSample_42[channel].buff[1] = in[3];
+
+		hb_push_dn(dnSample_42[channel], in[2], in[3]);
 		HB_dnsample(&dnSample_42[channel], &inter_42[1]);
-		
-		const size_t dnTap_41_size = sizeof(double) * (dnTap_41-2);
-		memmove(dnSample_41[channel].buff + 3, dnSample_41[channel].buff + 1, dnTap_41_size);
-		dnSample_41[channel].buff[2] = inter_42[0];
-		dnSample_41[channel].buff[1] = inter_42[1];
+
+		hb_push_dn(dnSample_41[channel], inter_42[0], inter_42[1]);
 		HB_dnsample(&dnSample_41[channel], out);
-		
+
 		return;
 	}
 	// 8 in 1 out
-	void JSIF_Processor::Fir_x8_dn(Vst::Sample64* in, Vst::Sample64* out, int32 channel) 
+	void JSIF_Processor::Fir_x8_dn(Vst::Sample64* in, Vst::Sample64* out, int32 channel)
 	{
 		Vst::Sample64 inter_83[4];
-		static constexpr size_t dnTap_83_size = sizeof(double) * (dnTap_83-2);
-		memmove(dnSample_83[channel].buff + 3, dnSample_83[channel].buff + 1, dnTap_83_size);
-		dnSample_83[channel].buff[2] = in[0];
-		dnSample_83[channel].buff[1] = in[1];
+		hb_push_dn(dnSample_83[channel], in[0], in[1]);
 		HB_dnsample(&dnSample_83[channel], &inter_83[0]);
-		
-		memmove(dnSample_83[channel].buff + 3, dnSample_83[channel].buff + 1, dnTap_83_size);
-		dnSample_83[channel].buff[2] = in[2];
-		dnSample_83[channel].buff[1] = in[3];
+
+		hb_push_dn(dnSample_83[channel], in[2], in[3]);
 		HB_dnsample(&dnSample_83[channel], &inter_83[1]);
-		
-		memmove(dnSample_83[channel].buff + 3, dnSample_83[channel].buff + 1, dnTap_83_size);
-		dnSample_83[channel].buff[2] = in[4];
-		dnSample_83[channel].buff[1] = in[5];
+
+		hb_push_dn(dnSample_83[channel], in[4], in[5]);
 		HB_dnsample(&dnSample_83[channel], &inter_83[2]);
-		
-		memmove(dnSample_83[channel].buff + 3, dnSample_83[channel].buff + 1, dnTap_83_size);
-		dnSample_83[channel].buff[2] = in[6];
-		dnSample_83[channel].buff[1] = in[7];
+
+		hb_push_dn(dnSample_83[channel], in[6], in[7]);
 		HB_dnsample(&dnSample_83[channel], &inter_83[3]);
-		
+
 		Vst::Sample64 inter_82[2];
-		static constexpr size_t dnTap_82_size = sizeof(double) * (dnTap_82-2);
-		memmove(dnSample_82[channel].buff + 3, dnSample_82[channel].buff + 1, dnTap_82_size);
-		dnSample_82[channel].buff[2] = inter_83[0];
-		dnSample_82[channel].buff[1] = inter_83[1];
+		hb_push_dn(dnSample_82[channel], inter_83[0], inter_83[1]);
 		HB_dnsample(&dnSample_82[channel], &inter_82[0]);
-		
-		memmove(dnSample_82[channel].buff + 3, dnSample_82[channel].buff + 1, dnTap_82_size);
-		dnSample_82[channel].buff[2] = inter_83[2];
-		dnSample_82[channel].buff[1] = inter_83[3];
+
+		hb_push_dn(dnSample_82[channel], inter_83[2], inter_83[3]);
 		HB_dnsample(&dnSample_82[channel], &inter_82[1]);
-		
-		static constexpr size_t dnTap_81_size = sizeof(double) * (dnTap_81-2);
-		memmove(dnSample_81[channel].buff + 3, dnSample_81[channel].buff + 1, dnTap_81_size);
-		dnSample_81[channel].buff[2] = inter_82[0];
-		dnSample_81[channel].buff[1] = inter_82[1];
+
+		hb_push_dn(dnSample_81[channel], inter_82[0], inter_82[1]);
 		HB_dnsample(&dnSample_81[channel], out);
 
 		return;
@@ -1207,18 +1364,16 @@ else if (filter[channel].TAP_CONDITION == 3) \
 	// Generic min-phase half-band interpolation: 1 in -> (1<<nStages) out.
 	void JSIF_Processor::Fir_up_n(Vst::Sample64* in, Vst::Sample64* out, int32 channel, int32 nStages)
 	{
-	    Vst::Sample64 a[64], b[64];
+	    Vst::Sample64 a[256], b[256];
 	    a[0] = *in;
 	    int32 count = 1;
 	    Vst::Sample64* src = a; Vst::Sample64* dst = b;
 	    for (int32 k = 0; k < nStages; k++)
 	    {
 	        Flt& f = upStage[k][channel];
-	        const size_t shift = sizeof(double) * (f.TAP_SIZE - 1) / 2;
 	        for (int32 i = 0; i < count; i++)
 	        {
-	            memmove(f.buff + 1, f.buff, shift);
-	            f.buff[0] = src[i];
+	            hb_push_up(f, src[i]);
 	            HB_upsample(&f, &dst[2 * i]);
 	        }
 	        count *= 2;
@@ -1230,20 +1385,17 @@ else if (filter[channel].TAP_CONDITION == 3) \
 	// Generic min-phase half-band decimation: (1<<nStages) in -> 1 out.
 	void JSIF_Processor::Fir_dn_n(Vst::Sample64* in, Vst::Sample64* out, int32 channel, int32 nStages)
 	{
-	    Vst::Sample64 a[64], b[64];
+	    Vst::Sample64 a[256], b[256];
 	    int32 count = 1 << nStages;
 	    memcpy(a, in, sizeof(Vst::Sample64) * count);
 	    Vst::Sample64* src = a; Vst::Sample64* dst = b;
 	    for (int32 k = nStages - 1; k >= 0; k--)   // highest-rate stage first
 	    {
 	        Flt& f = dnStage[k][channel];
-	        const size_t shift = sizeof(double) * (f.TAP_SIZE - 2);
 	        const int32 outCount = count / 2;
 	        for (int32 i = 0; i < outCount; i++)
 	        {
-	            memmove(f.buff + 3, f.buff + 1, shift);
-	            f.buff[2] = src[2 * i];
-	            f.buff[1] = src[2 * i + 1];
+	            hb_push_dn(f, src[2 * i], src[2 * i + 1]);
 	            HB_dnsample(&f, &dst[i]);
 	        }
 	        count = outCount;

@@ -1,7 +1,9 @@
 name: Windows Build
 
-on: 
-  workflow_dispatch: 
+on:
+  workflow_dispatch:
+  push:
+    branches: [arc-inflator-custom]
 
 env:
   build-dir: build
@@ -50,3 +52,79 @@ jobs:
       with:
         name: ${{ github.event.repository.name }}-${{ matrix.os }}-${{ github.sha }}
         path: build/VST3
+
+  build-macos:
+    runs-on: macos-latest
+
+    steps:
+    - name: Base plugin Repo checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: 'recursive'
+
+    - name: Custom VSTSDK Repo checkout
+      uses: actions/checkout@v4
+      with:
+        repository: steinbergmedia/vst3sdk
+        ref: v3.7.12_build_20
+        path: "./vst3sdk"
+        submodules: 'recursive'
+
+    - name: AudioUnitSDK checkout
+      uses: actions/checkout@v4
+      with:
+        repository: apple/AudioUnitSDK
+        path: "./AudioUnitSDK"
+
+    # Universal (arm64 + x86_64) via SMTG_BUILD_UNIVERSAL_BINARY. Ad-hoc signed ("-"):
+    # loads on the build machine's architecture, but other Macs need Developer ID +
+    # notarization, or `xattr -cr` on the bundle.
+    - name: Configure CMake
+      run: >
+        cmake
+        -S "${{ github.workspace }}"
+        -B "${{ github.workspace }}/${{ env.build-dir }}"
+        -G Xcode
+        -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13
+        -DSMTG_BUILD_UNIVERSAL_BINARY=ON
+        -DSMTG_ENABLE_VSTGUI_SUPPORT=ON
+        -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=OFF
+        -DSMTG_ENABLE_VST3_HOSTING_EXAMPLES=OFF
+        -DSMTG_ENABLE_AUV2_BUILDS=ON
+        -DSMTG_AUDIOUNIT_SDK_PATH="${{ github.workspace }}/AudioUnitSDK"
+        -DSMTG_CODE_SIGN_IDENTITY_MAC=-
+        -DSMTG_XCODE_OTHER_CODE_SIGNING_FLAGS=
+        -DGITHUB_ACTIONS=ON
+
+    - name: Build VST3
+      run: cmake --build "${{ github.workspace }}/${{ env.build-dir }}" --config ${{ env.build-type }} --target JS_Inflator
+
+    # AU wrapper is best-effort: a failure here must not block the VST3 artifact.
+    - name: Build AU
+      continue-on-error: true
+      run: cmake --build "${{ github.workspace }}/${{ env.build-dir }}" --config ${{ env.build-type }} --target JS_Inflator-au
+
+    # The SDK links Resources/plugin.vst3 as a symlink to an absolute runner path, which
+    # dangles once downloaded. Replace it with a real copy of the VST3 bundle.
+    - name: Embed VST3 in AU bundle
+      run: |
+        comp="build/VST3/${{ env.build-type }}/ArcInflator.component"
+        if [ -d "$comp" ]; then
+          rm -rf "$comp/Contents/Resources/plugin.vst3"
+          cp -R "build/VST3/${{ env.build-type }}/Arc Inflator.vst3" "$comp/Contents/Resources/plugin.vst3"
+        fi
+
+    - name: Check architectures
+      run: |
+        lipo -info "build/VST3/${{ env.build-type }}/Arc Inflator.vst3/Contents/MacOS/"*
+        if [ -d "build/VST3/${{ env.build-type }}/ArcInflator.component" ]; then
+          lipo -info "build/VST3/${{ env.build-type }}/ArcInflator.component/Contents/MacOS/"*
+        fi
+
+    - name: Upload plug-ins
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ github.event.repository.name }}-macos-${{ github.sha }}
+        path: |
+          build/VST3/${{ env.build-type }}/Arc Inflator.vst3
+          build/VST3/${{ env.build-type }}/ArcInflator.component

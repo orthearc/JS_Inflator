@@ -12,7 +12,9 @@ typedef enum {
 	overSample_16x,
 	overSample_32x,
 	overSample_64x,
-	overSample_num = 6
+	overSample_128x,
+	overSample_256x,
+	overSample_num = 8
 } overSample;
 
 typedef struct _SVF {
@@ -28,6 +30,14 @@ typedef struct _BS {
 	Steinberg::Vst::Sample64 GR = 0.0;
 	Steinberg::Vst::SampleRate SR = 0.0;
 } Band_Split;
+
+// 2nd-order antiderivative-antialiasing state for one waveshaper instance.
+typedef struct _ADAA2 {
+	Steinberg::Vst::Sample64 x1    = 0.0;   // previous input
+	Steinberg::Vst::Sample64 x2    = 0.0;   // input two samples ago
+	Steinberg::Vst::Sample64 ad2x1 = 0.0;   // cached F2(x1)
+	Steinberg::Vst::Sample64 d2    = 0.0;   // previous inner divided difference
+} ADAA2;
 
 static const Steinberg::Vst::ParamValue
 init_Input = 0.5,
@@ -49,7 +59,11 @@ init_Clip = false,
 init_Bypass = false,
 init_In = true,
 init_Split = false,
+init_Link = false,   // unity-gain fader link off by default
 init_Phase = false; // Min phase
+
+static const int
+init_ADAA_order = 0;   // antiderivative antialiasing: 0=Off, 1=1st-order, 2=2nd-order
 
 static const overSample
 init_OS = overSample_1x,
