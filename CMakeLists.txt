@@ -38,6 +38,8 @@ add_subdirectory(${vst3sdk_SOURCE_DIR} ${PROJECT_BINARY_DIR}/vst3sdk)
 smtg_enable_vst3_sdk()
 
 smtg_add_vst3plugin(JS_Inflator
+    PACKAGE_NAME "Arc Inflator"
+    SOURCES_LIST
     source/version.h
     source/JSIF_cids.h
     source/JSIF_shared.h
@@ -49,7 +51,6 @@ smtg_add_vst3plugin(JS_Inflator
     source/StarfieldView.h
     source/StarfieldView.cpp
 )
-set_target_properties(JS_Inflator PROPERTIES OUTPUT_NAME "Arc Inflator")
 
 # Build config matches the original JS_Inflator (SDK default Release: /O2 /Ob2, baseline x64/SSE2).
 # Measured: MSVC's /arch:AVX2 codegen does NOT reliably help these scalar-double FIR/shaper loops
