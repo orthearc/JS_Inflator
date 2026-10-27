@@ -35,7 +35,6 @@ jobs:
         cmake 
         -S ${{ github.workspace }}
         -B ${{ github.workspace }}/${{ env.build-dir }} 
-        -G "Visual Studio 17 2022" 
         -A x64
         -DCMAKE_BUILD_TYPE=${{ env.build-type }}
         -DSMTG_ENABLE_VSTGUI_SUPPORT=ON
@@ -76,7 +75,9 @@ jobs:
         repository: apple/AudioUnitSDK
         path: "./AudioUnitSDK"
 
-    # Universal (arm64 + x86_64) via SMTG_BUILD_UNIVERSAL_BINARY. Ad-hoc signed ("-"):
+    # -Wno-nan-infinity-disabled: VSTGUI builds with fast-math and -Werror, and newer
+    # clang rejects rapidjson's infinity() under fast-math.
+ + x86_64) via SMTG_BUILD_UNIVERSAL_BINARY. Ad-hoc signed ("-"):
     # loads on the build machine's architecture, but other Macs need Developer ID +
     # notarization, or `xattr -cr` on the bundle.
     - name: Configure CMake
@@ -86,6 +87,7 @@ jobs:
         -B "${{ github.workspace }}/${{ env.build-dir }}"
         -G Xcode
         -DCMAKE_OSX_DEPLOYMENT_TARGET=10.13
+        -DCMAKE_CXX_FLAGS="-Wno-nan-infinity-disabled"
         -DSMTG_BUILD_UNIVERSAL_BINARY=ON
         -DSMTG_ENABLE_VSTGUI_SUPPORT=ON
         -DSMTG_ENABLE_VST3_PLUGIN_EXAMPLES=OFF
